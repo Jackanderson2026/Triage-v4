@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sessions Triage v4
 
-## Getting Started
+Internal AM triage tool. Live BigQuery + Postgres-backed annotations + Google
+Workspace SSO. Brief: `../Sessions Triage v4 — Build Brief.md`. Architecture
+overview in §4 of the brief; pipeline in §13.
 
-First, run the development server:
+## First-time setup
+
+Copy `.env.example` to `.env.local` and fill in:
+
+- `DATABASE_URL` — Neon Postgres connection string (annotations).
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` — read-only service-account JSON, base64-encoded. When unset, every BQ-backed page falls back to fixtures (see `lib/bq/use.ts`).
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google OAuth client. When unset, `auth.ts` falls back to a dev-only Credentials provider that accepts any `@sessions.co.uk` email. **Do not deploy without the Google client.**
+- `NEXTAUTH_SECRET` — `openssl rand -base64 32`.
+
+Then:
 
 ```bash
+npm install
+psql "$DATABASE_URL" -f db/schema.sql   # one-off, idempotent
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000` — middleware redirects to sign-in; once signed in, the app lands on `/queue`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` — Next.js dev server.
+- `npm run build` / `npm start` — production build + serve.
+- `npm run typecheck` — `tsc --noEmit`.
+- `npm test` / `npm run test:watch` — vitest.
+- `npm run test:e2e` — Playwright happy-path (requires dev server running on `:3000`).
+- `npm run discover-enums` — pulls DISTINCT values for `hubspot_host_status`, `host_partner_bucket`, `brand_stack` and rewrites `lib/triage/enums.ts`. Requires live BQ creds.
 
-## Learn More
+## Layout
 
-To learn more about Next.js, take a look at the following resources:
+- `app/` — App Router; one folder per tab (§4).
+- `lib/bq/` — BigQuery client, query builders, fixtures, cache wrappers.
+- `lib/triage/` — hierarchy, thresholds, active-issue selector. Numbers come from `thresholds.ts`; sources cited via `// @source` comments per brief §3 conventions.
+- `lib/offboarding-risk/` — Service Pack risk-band scoring.
+- `lib/annotations/` — server actions; backed by `db/schema.sql` table.
+- `components/primitives/` — `IssuePill`, `MetricChip`, `SparkLine`, `Tag`, `TagModal`, design tokens.
+- `components/layout/` — `Shell`, `TabNav`, `GlobalFilterBar`, `DetailPanel`, `ReloadButton`.
+- `tests/` — vitest units; `tests/e2e/` Playwright.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Live vs. fixture data
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`lib/bq/use.ts` returns fixture rows when `GOOGLE_APPLICATION_CREDENTIALS_JSON` is unset. Every tab renders an amber banner in fixture mode so it's visually obvious. Production deploys must have the credential blob — there's no silent fallback in CI/CD checklist; see `.env.example`.
 
-## Deploy on Vercel
+## Open dependencies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Tracked in brief §15. The ones that block production:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` (data team) — until granted, every tab is fixture-only.
+- `GOOGLE_CLIENT_ID` / `_SECRET` (Sessions GCP) — without these the dev Credentials provider is wired and **insecure** for prod.
+- Refurbishment-flag HubSpot field name — `lib/bq/queries/offboardingSignals.ts` and `app/inactive-core/page.tsx` default it to false; one-line edit once confirmed.
+- Peak-window discrepancy (`17–21` vs `17:00–20:59`) — both windows are in `thresholds.ts`; flip in `scoring.ts` once Jack picks.

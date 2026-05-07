@@ -1,0 +1,67 @@
+// BigQuery client. Brief §5.1.
+// Credentials in GOOGLE_APPLICATION_CREDENTIALS_JSON as a single base64-encoded
+// JSON blob (Vercel-friendly — no file paths).
+// Project sessions-core-data; service account is read-only on production /
+// analytics / serve / hubspot / marketing / deliveroo datasets per §15 #10.
+
+import { BigQuery, type BigQueryOptions } from '@google-cloud/bigquery';
+
+let _client: BigQuery | null = null;
+
+export function getBigQuery(): BigQuery {
+  if (_client) return _client;
+
+  const projectId = process.env.GCP_PROJECT_ID || 'sessions-core-data';
+  const opts: BigQueryOptions = { projectId };
+
+  const blob = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (blob) {
+    const json = blob.trim().startsWith('{')
+      ? blob
+      : Buffer.from(blob, 'base64').toString('utf8');
+    const parsed = JSON.parse(json) as { client_email: string; private_key: string; project_id?: string };
+    opts.credentials = { client_email: parsed.client_email, private_key: parsed.private_key };
+    if (parsed.project_id) opts.projectId = parsed.project_id;
+  } else if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    throw new Error(
+      'GOOGLE_APPLICATION_CREDENTIALS_JSON must be set (base64-encoded service account JSON).',
+    );
+  }
+
+  _client = new BigQuery(opts);
+  return _client;
+}
+
+export interface QueryResult<T> {
+  rows: T[];
+  bytesProcessed: number;
+  jobId: string | undefined;
+}
+
+export async function runQuery<T>(
+  query: string,
+  params: Record<string, unknown> = {},
+): Promise<QueryResult<T>> {
+  const bq = getBigQuery();
+  const [job] = await bq.createQueryJob({
+    query,
+    params,
+    useLegacySql: false,
+    location: 'EU',
+  });
+  const [rows] = await job.getQueryResults();
+  const meta = job.metadata?.statistics?.query;
+  const bytesProcessed = Number(meta?.totalBytesProcessed ?? 0);
+
+  // Cost guard from §5.1 — warn loudly if a single query scans more than ~5 GB
+  // until the data team confirms a per-query ceiling (§15 #11).
+  const SOFT_LIMIT_BYTES = Number(process.env.BQ_PER_QUERY_BYTES_CEILING ?? 5 * 1024 ** 3);
+  if (bytesProcessed > SOFT_LIMIT_BYTES) {
+    console.warn(
+      `[bq] Query exceeded soft byte ceiling: ${bytesProcessed} bytes for job ${job.id}. ` +
+        `Verify partition filters are present.`,
+    );
+  }
+
+  return { rows: rows as T[], bytesProcessed, jobId: job.id };
+}
