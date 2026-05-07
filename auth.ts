@@ -53,7 +53,12 @@ const providers: NextAuthConfig['providers'] = hasGoogleCreds
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
   session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 30 },
-  pages: { signIn: '/api/auth/signin' },
+  // No pages.signIn override — NextAuth's default UI is at /api/auth/signin.
+  // Setting it explicitly to the default path can trigger redirect loops on
+  // Vercel where the request URL alias differs from VERCEL_URL.
+  // Trust the host header so cookies are issued for the alias the user actually
+  // visits (e.g. triage-v4.vercel.app), not the deployment-specific URL.
+  trustHost: true,
   callbacks: {
     async signIn({ user, account, profile }) {
       const email = (user.email ?? profile?.email ?? '').toLowerCase();
