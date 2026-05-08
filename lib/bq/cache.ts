@@ -42,6 +42,7 @@ export function cachedQuery<Args extends unknown[], R>(
 export const TAB_TAGS = {
   queue: 'tab:queue',
   offboarding: 'tab:offboarding',
+  rejectedOrders: 'tab:rejected-orders',
   inactiveCore: 'tab:inactive-core',
   inactiveMenus: 'tab:inactive-menus',
   paused: 'tab:paused',

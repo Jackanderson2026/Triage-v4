@@ -14,6 +14,7 @@
     "discover-enums": "tsx scripts/discover-enums.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
     "@google-cloud/bigquery": "^8.3.0",
     "@neondatabase/serverless": "^1.1.0",
     "next": "14.2.35",

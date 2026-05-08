@@ -11,6 +11,7 @@ import { OFFBOARDING_SIGNALS_FIXTURE } from './fixtures/offboardingSignals.fixtu
 import { COMPLIANCE_FIXTURE } from './fixtures/compliance.fixture';
 import { MENU_OPS_FIXTURE } from './fixtures/menuOps.fixture';
 import { SPARKLINES_FIXTURE } from './fixtures/sparklines.fixture';
+import { BRAND_OPS_FIXTURE } from './fixtures/brandOps.fixture';
 import { fetchPartnerOps as fetchPartnerOpsLive, type PartnerOpsRow } from './queries/granularOps';
 import {
   fetchOffboardingSignals as fetchOffboardingSignalsLive,
@@ -19,6 +20,7 @@ import {
 import { fetchCompliance as fetchComplianceLive, type ComplianceRow } from './queries/compliance';
 import { fetchMenuOps as fetchMenuOpsLive, type MenuOpsRow } from './queries/menuOps';
 import { fetchSparklines as fetchSparklinesLive, type PartnerSparkline } from './queries/sparklines';
+import { fetchBrandOps as fetchBrandOpsLive, type BrandOpsRow } from './queries/brandOps';
 
 export function isLive(): boolean {
   return Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
@@ -47,4 +49,9 @@ export async function getMenuOps(): Promise<MenuOpsRow[]> {
 export async function getSparklines(): Promise<Map<string, PartnerSparkline>> {
   if (isLive()) return fetchSparklinesLive();
   return SPARKLINES_FIXTURE;
+}
+
+export async function getBrandOps(): Promise<Map<string, BrandOpsRow[]>> {
+  if (isLive()) return fetchBrandOpsLive();
+  return BRAND_OPS_FIXTURE;
 }
