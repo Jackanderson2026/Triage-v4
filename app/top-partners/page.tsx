@@ -48,13 +48,13 @@ interface PartnerView {
   issues: IssueCode[];
 }
 
-// Brand-stack sub-tabs. Match is "brand_stack contains the brand name" (case-
-// insensitive substring), so a partner running "SoBe + Rudi's" appears under
-// both SoBe and Rudis. Ordered by the user's stated priority list.
+// Brand-stack sub-tabs. brand_stack stores 3-letter codes (SBB / RUD / SMA / KAR / OTHER).
+// Match is case-insensitive substring on the code, so a partner running 'SBB+RUD'
+// appears under both SoBe and Rudi's.
 const BRAND_SUBTABS: Array<{ key: string; label: string; matches: (stack: string) => boolean }> = [
-  { key: 'sobe', label: 'SoBe', matches: (s) => /sobe/i.test(s) },
-  { key: 'rudis', label: "Rudi's", matches: (s) => /rudi/i.test(s) },
-  { key: 'smashed', label: 'Smashed', matches: (s) => /smashed/i.test(s) },
+  { key: 'sbb', label: 'SoBe', matches: (s) => /SBB/i.test(s) },
+  { key: 'rud', label: "Rudi's", matches: (s) => /RUD/i.test(s) },
+  { key: 'sma', label: 'Smashed', matches: (s) => /SMA/i.test(s) },
 ];
 
 export default async function TopPartnersPage({ searchParams }: PageProps) {

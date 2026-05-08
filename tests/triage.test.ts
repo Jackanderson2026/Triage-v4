@@ -10,7 +10,7 @@ const baseline: PartnerSignals = {
   overallCompliant: true,
   hasEmptyComplianceLists: false,
   opsStale: false,
-  hostStatus: 'core_estate',
+  hostStatus: 'Core Estate',
   daysUntilResume: null,
   inactiveMenuCount: 0,
 };
@@ -29,7 +29,7 @@ describe('hierarchy active-issue selection', () => {
   it('lowest tier wins: paused_in_window (T2) beats missing_items_breach (T6)', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      hostStatus: 'paused',
+      hostStatus: 'Paused',
       daysUntilResume: 10,
       missingItemsPct7d: 0.05,
     };
@@ -39,7 +39,7 @@ describe('hierarchy active-issue selection', () => {
   it('paused with negative daysUntilResume → paused_overdue, still T2', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      hostStatus: 'paused',
+      hostStatus: 'Paused',
       daysUntilResume: -5,
     };
     const active = selectActiveIssue(detectIssues(signals));

@@ -47,7 +47,9 @@ export async function runQuery<T>(
     query,
     params,
     useLegacySql: false,
-    location: 'EU',
+    // Datasets in sessions-core-data live in europe-west2 (London), not the
+    // multi-region EU. Hardcoded — no datasets exist outside this region.
+    location: 'europe-west2',
   });
   const [rows] = await job.getQueryResults();
   const meta = job.metadata?.statistics?.query;

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition, type CSSProperties } from 'react';
 import { tokens } from '@/components/primitives';
-import { BRAND_STACKS, HOST_STATUSES, PARTNER_TYPES } from '@/lib/triage/enums';
+import { BRAND_STACKS, BRAND_STACK_LABELS, HOST_STATUSES, PARTNER_TYPES } from '@/lib/triage/enums';
 
 const { colors, fonts, radii, space, text } = tokens;
 
@@ -66,10 +66,10 @@ const linkStyle: CSSProperties = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  core_estate: 'Core Estate',
-  trial_period: 'Trial',
-  paused: 'Paused',
-  churned: 'Churned',
+  'Core Estate': 'Core Estate',
+  'Trial Period': 'Trial',
+  Paused: 'Paused',
+  Churn: 'Churned',
 };
 
 export function GlobalFilterBar() {
@@ -142,7 +142,7 @@ export function GlobalFilterBar() {
       </div>
       <div style={groupStyle}>
         <span style={labelStyle}>Brand stack</span>
-        <ChipRow paramKey="brandStack" current={brandStack} options={BRAND_STACKS} />
+        <ChipRow paramKey="brandStack" current={brandStack} options={BRAND_STACKS} labelLookup={BRAND_STACK_LABELS} />
       </div>
       <div style={groupStyle}>
         <span style={labelStyle}>Status</span>

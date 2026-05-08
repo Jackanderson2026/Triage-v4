@@ -15,6 +15,7 @@ import {
   RATING_TARGET,
   RIDER_WAIT_BENCHMARK,
 } from './thresholds';
+import { HOST_STATUS_PAUSED } from './enums';
 
 export interface PartnerSignals {
   /** AVG bad_avg_open_rate over trailing 7d. Null when no orders. */
@@ -53,7 +54,7 @@ export function detectIssues(signals: PartnerSignals): IssueCode[] {
   }
 
   // Tier 2 — paused. All paused partners enter the queue; row sort handles ordering by daysUntilResume.
-  if (signals.hostStatus === 'paused') {
+  if (signals.hostStatus === HOST_STATUS_PAUSED) {
     if (signals.daysUntilResume !== null && signals.daysUntilResume < 0) {
       issues.push('paused_overdue');
     } else {

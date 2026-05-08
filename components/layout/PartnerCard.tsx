@@ -17,6 +17,7 @@ import { createAnnotation } from '@/lib/annotations';
 import { generateSummary } from '@/lib/ai/summary';
 import { ISSUE_CATALOGUE, type IssueCode } from '@/lib/triage/hierarchy';
 import { activeIssueLabel } from '@/lib/triage/activeIssue';
+import { HOST_STATUS_PAUSED } from '@/lib/triage/enums';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import type { BrandOpsRow } from '@/lib/bq/queries/brandOps';
 import type { PartnerSparkline } from '@/lib/bq/queries/sparklines';
@@ -165,7 +166,7 @@ export function PartnerCard(props: PartnerCardProps) {
             {annotation?.type === 'paused' && <Tag label="Paused (snoozed)" tone="info" />}
             {annotation?.type === 'actioned' && <Tag label="Actioned" tone="info" />}
             {annotation?.type === 'known_issue' && <Tag label="Known issue" tone="info" />}
-            {partner.hostStatus === 'paused' && daysUntilResume !== null && daysUntilResume < 0 && (
+            {partner.hostStatus === HOST_STATUS_PAUSED && daysUntilResume !== null && daysUntilResume < 0 && (
               <Tag label={`${Math.abs(daysUntilResume)}d overdue`} tone="warning" />
             )}
           </div>
