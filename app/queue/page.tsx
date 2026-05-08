@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerCard } from '@/components/layout/PartnerCard';
+import { SubTabNav, type SubTab } from '@/components/layout/SubTabNav';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/lib/bq/use';
 import { listActiveAnnotations } from '@/lib/annotations';
 import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
-import { compareIssueSeverity } from '@/lib/triage/hierarchy';
+import { compareIssueSeverity, type IssueCode } from '@/lib/triage/hierarchy';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
@@ -41,9 +42,24 @@ function toTagAnn(a: AnnotationType): TagAnnotationType {
   return a;
 }
 
+// Sub-tab filter buckets — each maps to a set of issue codes that mean "this
+// partner belongs in this bucket". Order matches the queue hierarchy.
+const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = [
+  { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty', 'data_quality_ops_stale'] },
+  { key: 'paused', label: 'Paused', codes: ['paused_overdue', 'paused_in_window'] },
+  { key: 'inactive', label: 'Inactive', codes: ['inactive_partner'] },
+  { key: 'inactive-menus', label: 'Inactive Menus', codes: ['inactive_menus'] },
+  { key: 'non-compliant', label: 'Non-Compliant', codes: ['compliance_non_compliant'] },
+  { key: 'missing-items', label: 'Missing Items', codes: ['missing_items_breach'] },
+  { key: 'rating', label: 'Rating', codes: ['rating_below_target'] },
+  { key: 'open-rate', label: 'Open Rate', codes: ['open_rate_breach'] },
+  { key: 'rider-wait', label: 'Rider Wait', codes: ['rider_wait_breach'] },
+];
+
 export default async function QueuePage({ searchParams }: PageProps) {
   const partnerType = asString(searchParams.partnerType);
   const brandStack = asString(searchParams.brandStack);
+  const tierFilter = asString(searchParams.tier);
 
   const [partners, compliance, sparklines, counts, menus, brands] = await Promise.all([
     getPartnerOps(),
@@ -110,6 +126,44 @@ export default async function QueuePage({ searchParams }: PageProps) {
       return b.partner.gmv28d - a.partner.gmv28d;
     });
 
+  // Counts per bucket — pre-tier-filter so chips show the unfiltered totals.
+  const bucketCounts = new Map<string, number>();
+  for (const v of views) {
+    if (!v.activeIssue) continue;
+    for (const b of TIER_BUCKETS) {
+      if (b.codes.includes(v.activeIssue)) {
+        bucketCounts.set(b.key, (bucketCounts.get(b.key) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Apply the tier filter (if any) to the visible views.
+  const tierBucket = tierFilter ? TIER_BUCKETS.find((b) => b.key === tierFilter) : null;
+  const visibleViews = tierBucket
+    ? views.filter((v) => v.activeIssue !== null && tierBucket.codes.includes(v.activeIssue))
+    : views;
+
+  // Build the sub-tab list with hrefs that preserve global filters.
+  const baseParams = new URLSearchParams();
+  if (partnerType) baseParams.set('partnerType', partnerType);
+  if (brandStack) baseParams.set('brandStack', brandStack);
+  function tierHref(tier: string | null): string {
+    const p = new URLSearchParams(baseParams.toString());
+    if (tier) p.set('tier', tier);
+    const qs = p.toString();
+    return qs ? `/queue?${qs}` : '/queue';
+  }
+  const subTabs: SubTab[] = [
+    { key: 'all', label: 'All', href: tierHref(null), count: views.length, active: !tierFilter },
+    ...TIER_BUCKETS.map((b) => ({
+      key: b.key,
+      label: b.label,
+      href: tierHref(b.key),
+      count: bucketCounts.get(b.key) ?? 0,
+      active: tierFilter === b.key,
+    })),
+  ];
+
   return (
     <Shell
       tabName="Triage Queue"
@@ -135,7 +189,8 @@ export default async function QueuePage({ searchParams }: PageProps) {
           service account.
         </div>
       )}
-      {views.length === 0 ? (
+      <SubTabNav tabs={subTabs} />
+      {visibleViews.length === 0 ? (
         <div
           style={{
             padding: `${space[12]} ${space[6]}`,
@@ -147,12 +202,14 @@ export default async function QueuePage({ searchParams }: PageProps) {
             fontFamily: fonts.body,
           }}
         >
-          {partnerType || brandStack
-            ? 'No partners match the current filters. Clear filters to see all.'
-            : 'No partners with active issues. Check back after the next data refresh.'}
+          {tierFilter
+            ? `No partners with an active ${tierBucket?.label ?? tierFilter} issue.`
+            : partnerType || brandStack
+              ? 'No partners match the current filters. Clear filters to see all.'
+              : 'No partners with active issues. Check back after the next data refresh.'}
         </div>
       ) : (
-        views.map((v, i) => (
+        visibleViews.map((v, i) => (
           <PartnerCard
             key={v.partner.partnerId}
             partner={v.partner}

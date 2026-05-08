@@ -35,6 +35,11 @@ function weeks(opts: { gmv: number; orders: number; rating: number | null; open:
 function brand(partnerId: string, brandName: string, base: { gmv: number; orders: number; rating: number | null; open: number | null; miss: number | null; rider: number | null; rejected: number; seed: number }): BrandOpsRow {
   const w = weeks(base);
   const last = w[w.length - 1]!;
+  // Mock ad spend = ~3% of weekly GMV; discount = ~5%.
+  const adSpend7d = last.gmv * 0.03;
+  const adSpend28d = w.slice(-4).reduce((a, x) => a + x.gmv * 0.03, 0);
+  const discount7d = last.gmv * 0.05;
+  const discount28d = w.slice(-4).reduce((a, x) => a + x.gmv * 0.05, 0);
   return {
     partnerId,
     brandName,
@@ -45,6 +50,10 @@ function brand(partnerId: string, brandName: string, base: { gmv: number; orders
     missingItemsPct7d: last.missingItemsPct,
     riderWait5minPct7d: base.rider,
     rejectedCount7d: base.rejected,
+    adSpend7d,
+    adSpend28d,
+    discountValue7d: discount7d,
+    discountValue28d: discount28d,
     weeks: w,
   };
 }

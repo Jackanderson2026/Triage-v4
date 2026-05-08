@@ -41,7 +41,9 @@ export function cachedQuery<Args extends unknown[], R>(
 // Tags every tab's read path uses, so the "Reload" button has a canonical list.
 export const TAB_TAGS = {
   queue: 'tab:queue',
+  topPartners: 'tab:top-partners',
   offboarding: 'tab:offboarding',
   rejectedOrders: 'tab:rejected-orders',
+  adSpend: 'tab:ad-spend',
 } as const;
 export type TabTag = (typeof TAB_TAGS)[keyof typeof TAB_TAGS];

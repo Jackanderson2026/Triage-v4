@@ -64,6 +64,8 @@ export function TabNav({ current, tabs }: TabNavProps) {
 
 export const TABS: TabSpec[] = [
   { href: '/queue', label: 'Triage Queue' },
+  { href: '/top-partners', label: 'Top Partners' },
   { href: '/offboarding-risk', label: 'Offboarding Risk' },
   { href: '/rejected-orders', label: 'Rejected Orders' },
+  { href: '/ad-spend', label: 'Ad Spend' },
 ];

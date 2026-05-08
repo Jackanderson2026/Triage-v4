@@ -39,6 +39,17 @@ export interface PartnerOpsRow {
   gmv28d: number;
   orders28d: number;
 
+  /** Brief §6 metric 7 — `marketing.ppc_daily_pos_code.advert_cost_to_restaurant`. */
+  adSpend7d: number;
+  adSpend28d: number;
+  adSpendMtd: number;
+  /** Brief §6 metric 8 — `production.platform_offer_daily_pos_code_view`. Discount % computed at render time = discountValue / gmv. */
+  discountValue7d: number;
+  discountValue28d: number;
+  discountOrders28d: number;
+  /** Distinct offer types seen in trailing 28d (e.g. 'BOGOF', 'PERCENT_OFF'). */
+  offerTypes: string[];
+
   lastOrderDate: string | null;
   daysSinceLastOrder: number | null;
   opsStale: boolean;
@@ -75,6 +86,14 @@ interface RawRow {
 
   gmv_28d: number;
   orders_28d: number;
+
+  ad_spend_7d: number | null;
+  ad_spend_28d: number | null;
+  ad_spend_mtd: number | null;
+  discount_value_7d: number | null;
+  discount_value_28d: number | null;
+  discount_orders_28d: number | null;
+  offer_types: string[] | null;
 
   last_order_date: string | null;
   most_recent_ops_date: string | null;
@@ -145,6 +164,49 @@ partner_brand_stack AS (
     ON SUBSTR(pd.pos_code, 1, 10) = bs.menu_code
   GROUP BY p.partner_id
 ),
+ppc AS (
+  -- Aggregate ad spend per pos_code per day FIRST, then join.
+  -- Brief §5.2 conventions — never join then SUM, fan-out double-counts GMV.
+  SELECT
+    ${partnerIdSql()}                                                       AS partner_id,
+    date,
+    SUM(advert_cost_to_restaurant)                                          AS ad_spend
+  FROM \`sessions-core-data.marketing.ppc_daily_pos_code\`
+  WHERE date BETWEEN DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY)
+                 AND CURRENT_DATE('Europe/London')
+  GROUP BY partner_id, date
+),
+ppc_window AS (
+  SELECT
+    partner_id,
+    SUM(IF(date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), ad_spend, 0))   AS ad_spend_7d,
+    SUM(ad_spend)                                                                            AS ad_spend_28d,
+    SUM(IF(date >= DATE_TRUNC(CURRENT_DATE('Europe/London'), MONTH), ad_spend, 0))          AS ad_spend_mtd
+  FROM ppc
+  GROUP BY partner_id
+),
+offer AS (
+  SELECT
+    ${partnerIdSql()}                                                       AS partner_id,
+    order_date,
+    SUM(total_offer_value)                                                  AS offer_value,
+    SUM(total_offer_orders)                                                 AS offer_orders,
+    ARRAY_AGG(DISTINCT offers_type IGNORE NULLS)                            AS offer_types
+  FROM \`sessions-core-data.production.platform_offer_daily_pos_code_view\`
+  WHERE order_date BETWEEN DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY)
+                       AND CURRENT_DATE('Europe/London')
+  GROUP BY partner_id, order_date
+),
+offer_window AS (
+  SELECT
+    partner_id,
+    SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), offer_value, 0))   AS discount_value_7d,
+    SUM(offer_value)                                                                                  AS discount_value_28d,
+    SUM(offer_orders)                                                                                 AS discount_orders_28d,
+    ARRAY_CONCAT_AGG(offer_types)                                                                     AS offer_types
+  FROM offer
+  GROUP BY partner_id
+),
 partner_window AS (
   SELECT
     partner_id,
@@ -189,11 +251,20 @@ SELECT
   pw.gmv_7d, pw.orders_7d, pw.open_rate_7d, pw.missing_items_pct_7d,
   pw.rider_wait_pct_7d, pw.rejected_rate_7d, pw.rejected_count_7d, pw.prep_minutes_7d, pw.aod_7d, pw.rating_28d,
   pw.gmv_28d, pw.orders_28d,
+  COALESCE(adw.ad_spend_7d, 0)         AS ad_spend_7d,
+  COALESCE(adw.ad_spend_28d, 0)        AS ad_spend_28d,
+  COALESCE(adw.ad_spend_mtd, 0)        AS ad_spend_mtd,
+  COALESCE(ow.discount_value_7d, 0)    AS discount_value_7d,
+  COALESCE(ow.discount_value_28d, 0)   AS discount_value_28d,
+  COALESCE(ow.discount_orders_28d, 0)  AS discount_orders_28d,
+  ow.offer_types                       AS offer_types,
   pw.last_order_date, pw.most_recent_ops_date,
   pm.paused_from, pm.paused_until, pm.host_launch_date
 FROM partner_meta pm
 JOIN partner_window pw USING (partner_id)
 LEFT JOIN partner_brand_stack pbs USING (partner_id)
+LEFT JOIN ppc_window adw USING (partner_id)
+LEFT JOIN offer_window ow USING (partner_id)
 WHERE pm.earliest_churn IS NULL OR pm.earliest_churn > CURRENT_DATE('Europe/London')
 ORDER BY pw.gmv_28d DESC
 `;
@@ -239,6 +310,13 @@ function rowToPartner(r: RawRow): PartnerOpsRow {
     rating28d: r.rating_28d,
     gmv28d: Number(r.gmv_28d ?? 0),
     orders28d: Number(r.orders_28d ?? 0),
+    adSpend7d: Number(r.ad_spend_7d ?? 0),
+    adSpend28d: Number(r.ad_spend_28d ?? 0),
+    adSpendMtd: Number(r.ad_spend_mtd ?? 0),
+    discountValue7d: Number(r.discount_value_7d ?? 0),
+    discountValue28d: Number(r.discount_value_28d ?? 0),
+    discountOrders28d: Number(r.discount_orders_28d ?? 0),
+    offerTypes: Array.from(new Set(r.offer_types ?? [])),
     lastOrderDate: r.last_order_date,
     daysSinceLastOrder,
     opsStale,

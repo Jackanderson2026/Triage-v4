@@ -325,6 +325,15 @@ export function PartnerCard(props: PartnerCardProps) {
             <MetricChip label="AOV" value={fmtGbp(partner.aov7d)} />
             <MetricChip label="Prep mins" value={partner.prepMinutes7d?.toFixed(1) ?? '—'} />
             <MetricChip label="28d GMV" value={fmtGbp(partner.gmv28d)} />
+            <MetricChip label="Ad spend (7d)" value={fmtGbp(partner.adSpend7d)} />
+            <MetricChip label="Ad spend (28d)" value={fmtGbp(partner.adSpend28d)} />
+            <MetricChip
+              label="Discount %"
+              value={partner.gmv28d > 0 ? `${((partner.discountValue28d / partner.gmv28d) * 100).toFixed(1)}%` : '—'}
+            />
+            {partner.offerTypes.length > 0 && (
+              <MetricChip label="Offers" value={partner.offerTypes.join(', ')} />
+            )}
           </div>
 
           {/* Brand sub-rows */}
@@ -462,6 +471,11 @@ function BrandRow({ brand }: { brand: BrandOpsRow }) {
             {brand.rejectedCount7d > 0 && (
               <MetricChip label="Rejected (7d)" value={brand.rejectedCount7d.toString()} state="bad" />
             )}
+            <MetricChip label="Ad spend (7d)" value={fmtGbp(brand.adSpend7d)} />
+            <MetricChip
+              label="Discount %"
+              value={brand.gmv7d > 0 ? `${((brand.discountValue7d / brand.gmv7d) * 100).toFixed(1)}%` : '—'}
+            />
           </div>
         </div>
       )}
