@@ -8,8 +8,13 @@
 //   - Currency in GBP.
 //   - Days as integers.
 
-export const OPEN_RATE_BENCHMARK = 0.95;
-// @source Partner Agreement §2.2 / §18 (Sessions Benchmarks). Below 95% is breach.
+export const OPEN_RATE_CONTRACTUAL = 0.95;
+// @source Partner Agreement §2.2 / §18 (Sessions Benchmarks). Below 95% is contractual breach.
+
+export const OPEN_RATE_BENCHMARK = 0.98;
+// @source Sessions internal — stricter than the contractual 95% so the AM
+// gets ahead of breaches rather than chasing them. AM-facing trigger; not a
+// contract breach by itself.
 
 export const MISSING_ITEMS_INTERNAL_TARGET = 0.02;
 // @source Sessions internal target (§6 metric 3).
@@ -50,11 +55,18 @@ export const INACTIVE_BANDS_DAYS = {
 export const INACTIVE_CORE_THRESHOLD_DAYS = 1;
 // @source Brief §7 Tab 3 — sites in Core Estate / Trial that haven't ordered for 1+ days.
 
+export const INACTIVE_PARTNER_THRESHOLD_DAYS = 2;
+// @source Triage hierarchy (May 2026). Partner-grain queue trigger — fires for
+// any partner who hasn't taken an order in 2+ days, regardless of platform.
+// Distinct from the Core/Trial tab (1+ day) and the Deliveroo offboarding band
+// (14+ days, ROO only).
+
 export const INACTIVE_MENU_THRESHOLD_DAYS = 7;
 // @source Brief §7 Tab 4 — menus with no orders in 7+ days.
 
-export const RATING_TARGET = 4.4;
-// @source Sessions internal target (§6 metric 9). Avg New Rating ≥ 4.4*.
+export const RATING_TARGET = 4.2;
+// @source Sessions internal target (§6 metric 9). Avg New Rating ≥ 4.2*.
+// AM-set in May 2026; previously 4.4.
 
 export const REJECT_RATE_LIMIT = 0.01;
 // @source Deliveroo Service Pack 2025 Renewal §9.1.1. Reject < 1% of orders.

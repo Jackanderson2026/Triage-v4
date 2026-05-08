@@ -18,6 +18,7 @@ import {
 import type { MenuOpsRow } from '@/lib/bq/queries/menuOps';
 import { INACTIVE_MENU_THRESHOLD_DAYS } from '@/lib/triage/thresholds';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { detectIssues } from '@/lib/triage/activeIssue';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 
@@ -47,6 +48,7 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
   ]);
   const partnersById = new Map(partners.map((p) => [p.partnerId, p]));
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   const flagged = menus
     .filter((m) => (platformFilter ? m.platform === platformFilter : true))
@@ -123,14 +125,15 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
         daysSinceLastOrder: detailPartner.daysSinceLastOrder,
         missingItemsPct7d: detailPartner.missingItemsPct7d,
         riderWait5minPct7d: detailPartner.riderWait5minPct7d,
-        rejectedRate7d: detailPartner.rejectedRate7d,
         rating28d: detailPartner.rating28d,
         overallCompliant:
           complianceByPartner.get(detailPartner.partnerId)?.row.overallCompliant ?? null,
         hasEmptyComplianceLists:
           complianceByPartner.get(detailPartner.partnerId)?.row.hasEmptyLists ?? false,
         opsStale: detailPartner.opsStale,
-        isOnDeliveroo: detailPartner.isOnDeliveroo,
+        hostStatus: detailPartner.hostStatus,
+        daysUntilResume: daysUntilResume(detailPartner.pausedUntil),
+        inactiveMenuCount: inactiveMenuCounts.get(detailPartner.partnerId) ?? 0,
       })
     : [];
 

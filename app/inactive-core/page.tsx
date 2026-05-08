@@ -8,10 +8,11 @@ import { PartnerDetail } from '@/components/layout/PartnerDetail';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getCompliance, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
+import { getCompliance, getMenuOps, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import { INACTIVE_CORE_THRESHOLD_DAYS } from '@/lib/triage/thresholds';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { detectIssues } from '@/lib/triage/activeIssue';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 
@@ -35,13 +36,15 @@ export default async function InactiveCorePage({ searchParams }: PageProps) {
   const showRefurb = asString(searchParams.showRefurb) === '1';
   const detailId = asString(searchParams.id);
 
-  const [partners, compliance, sparklines, counts] = await Promise.all([
+  const [partners, compliance, sparklines, counts, menus] = await Promise.all([
     getPartnerOps(),
     getCompliance(),
     getSparklines(),
     getTabCounts(),
+    getMenuOps(),
   ]);
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   const flagged = partners
     .filter((p) => p.hostStatus !== null && ELIGIBLE_STATUSES.has(p.hostStatus))
@@ -116,13 +119,14 @@ export default async function InactiveCorePage({ searchParams }: PageProps) {
         daysSinceLastOrder: detail.daysSinceLastOrder,
         missingItemsPct7d: detail.missingItemsPct7d,
         riderWait5minPct7d: detail.riderWait5minPct7d,
-        rejectedRate7d: detail.rejectedRate7d,
         rating28d: detail.rating28d,
         overallCompliant: complianceByPartner.get(detail.partnerId)?.row.overallCompliant ?? null,
         hasEmptyComplianceLists:
           complianceByPartner.get(detail.partnerId)?.row.hasEmptyLists ?? false,
         opsStale: detail.opsStale,
-        isOnDeliveroo: detail.isOnDeliveroo,
+        hostStatus: detail.hostStatus,
+        daysUntilResume: daysUntilResume(detail.pausedUntil),
+        inactiveMenuCount: inactiveMenuCounts.get(detail.partnerId) ?? 0,
       })
     : [];
 

@@ -11,6 +11,7 @@ import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import {
   getCompliance,
+  getMenuOps,
   getOffboardingSignals,
   getPartnerOps,
   getSparklines,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/bq/use';
 import { rankRisk, scoreSite, type RiskBand, type SiteRisk } from '@/lib/offboarding-risk/scoring';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { detectIssues } from '@/lib/triage/activeIssue';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 
@@ -73,16 +75,18 @@ const triggersListStyle: CSSProperties = {
 export default async function OffboardingRiskPage({ searchParams }: PageProps) {
   const detailId = asString(searchParams.id);
 
-  const [signals, partners, compliance, sparklines, counts] = await Promise.all([
+  const [signals, partners, compliance, sparklines, counts, menus] = await Promise.all([
     getOffboardingSignals(),
     getPartnerOps(),
     getCompliance(),
     getSparklines(),
     getTabCounts(),
+    getMenuOps(),
   ]);
 
   const partnersById = new Map(partners.map((p) => [p.partnerId, p]));
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   const all = signals.map(scoreSite);
   const flagged = all.filter((r) => r.band !== 'green' || r.excluded);
@@ -151,13 +155,14 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
           daysSinceLastOrder: detailPartner.daysSinceLastOrder,
           missingItemsPct7d: detailPartner.missingItemsPct7d,
           riderWait5minPct7d: detailPartner.riderWait5minPct7d,
-          rejectedRate7d: detailPartner.rejectedRate7d,
           rating28d: detailPartner.rating28d,
           overallCompliant: complianceByPartner.get(detailPartner.partnerId)?.row.overallCompliant ?? null,
           hasEmptyComplianceLists:
             complianceByPartner.get(detailPartner.partnerId)?.row.hasEmptyLists ?? false,
           opsStale: detailPartner.opsStale,
-          isOnDeliveroo: detailPartner.isOnDeliveroo,
+          hostStatus: detailPartner.hostStatus,
+          daysUntilResume: daysUntilResume(detailPartner.pausedUntil),
+          inactiveMenuCount: inactiveMenuCounts.get(detailPartner.partnerId) ?? 0,
         })
       : [];
 

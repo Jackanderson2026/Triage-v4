@@ -9,7 +9,7 @@ import { AnnotationButton } from '@/components/layout/AnnotationButton';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
 import { IssuePill, MetricChip, Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getCompliance, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
+import { getCompliance, getMenuOps, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
 import { listActiveAnnotations } from '@/lib/annotations';
 import { detectIssues, selectActiveIssue, activeIssueLabel } from '@/lib/triage/activeIssue';
 import { ISSUE_CATALOGUE, compareIssueSeverity, type IssueCode } from '@/lib/triage/hierarchy';
@@ -17,6 +17,7 @@ import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import { OPEN_RATE_BENCHMARK, MISSING_ITEMS_INTERNAL_TARGET, RATING_TARGET } from '@/lib/triage/thresholds';
 import { buildComplianceByPartner, type PartnerCompliance } from '@/lib/triage/compliance';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 
 const { colors, fonts, space, text } = tokens;
 
@@ -54,14 +55,16 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const brandStack = asString(searchParams.brandStack);
   const detailId = asString(searchParams.id);
 
-  const [partners, compliance, sparklines, counts] = await Promise.all([
+  const [partners, compliance, sparklines, counts, menus] = await Promise.all([
     getPartnerOps(),
     getCompliance(),
     getSparklines(),
     getTabCounts(),
+    getMenuOps(),
   ]);
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   const views: PartnerView[] = partners
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
@@ -74,12 +77,13 @@ export default async function QueuePage({ searchParams }: PageProps) {
         daysSinceLastOrder: partner.daysSinceLastOrder,
         missingItemsPct7d: partner.missingItemsPct7d,
         riderWait5minPct7d: partner.riderWait5minPct7d,
-        rejectedRate7d: partner.rejectedRate7d,
         rating28d: partner.rating28d,
         overallCompliant: cRow ? cRow.overallCompliant : null,
         hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
         opsStale: partner.opsStale,
-        isOnDeliveroo: partner.isOnDeliveroo,
+        hostStatus: partner.hostStatus,
+        daysUntilResume: daysUntilResume(partner.pausedUntil),
+        inactiveMenuCount: inactiveMenuCounts.get(partner.partnerId) ?? 0,
       });
       const activeIssue = selectActiveIssue(issues);
       const ann = annotations.get(partner.partnerId);
@@ -93,7 +97,8 @@ export default async function QueuePage({ searchParams }: PageProps) {
         compliance: pcomp,
       };
     })
-    .filter((v) => v.annotation?.type !== 'churned' && v.annotation?.type !== 'paused')
+    // Paused partners now stay in the queue. Only churned annotation snoozes.
+    .filter((v) => v.annotation?.type !== 'churned')
     .sort((a, b) => {
       if (a.activeIssue && b.activeIssue) {
         const sev = compareIssueSeverity(a.activeIssue, b.activeIssue);

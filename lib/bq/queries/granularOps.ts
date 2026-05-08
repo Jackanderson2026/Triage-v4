@@ -30,6 +30,7 @@ export interface PartnerOpsRow {
   missingItemsPct7d: number | null;
   riderWait5minPct7d: number | null;
   rejectedRate7d: number | null;
+  rejectedCount7d: number;
   prepMinutes7d: number | null;
   aod7d: number | null;
   aov7d: number | null;
@@ -67,6 +68,7 @@ interface RawRow {
   missing_items_pct_7d: number | null;
   rider_wait_pct_7d: number | null;
   rejected_rate_7d: number | null;
+  rejected_count_7d: number | null;
   prep_minutes_7d: number | null;
   aod_7d: number | null;
   rating_28d: number | null;
@@ -161,6 +163,7 @@ partner_window AS (
       SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), cnt_orders_rejected_total, 0)),
       SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), cnt_orders_rejected_total + total_order_count, 0))
     )                                                                                                      AS rejected_rate_7d,
+    SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), cnt_orders_rejected_total, 0)) AS rejected_count_7d,
     SAFE_DIVIDE(
       SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), total_prep_time_mins, 0)),
       SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), total_order_count, 0))
@@ -184,7 +187,7 @@ SELECT
   pm.serve_venue_ids,
   pm.platforms,
   pw.gmv_7d, pw.orders_7d, pw.open_rate_7d, pw.missing_items_pct_7d,
-  pw.rider_wait_pct_7d, pw.rejected_rate_7d, pw.prep_minutes_7d, pw.aod_7d, pw.rating_28d,
+  pw.rider_wait_pct_7d, pw.rejected_rate_7d, pw.rejected_count_7d, pw.prep_minutes_7d, pw.aod_7d, pw.rating_28d,
   pw.gmv_28d, pw.orders_28d,
   pw.last_order_date, pw.most_recent_ops_date,
   pm.paused_from, pm.paused_until, pm.host_launch_date
@@ -226,6 +229,7 @@ function rowToPartner(r: RawRow): PartnerOpsRow {
     missingItemsPct7d: r.missing_items_pct_7d,
     riderWait5minPct7d: r.rider_wait_pct_7d,
     rejectedRate7d: r.rejected_rate_7d,
+    rejectedCount7d: Number(r.rejected_count_7d ?? 0),
     prepMinutes7d: r.prep_minutes_7d,
     aod7d: r.aod_7d,
     aov7d:

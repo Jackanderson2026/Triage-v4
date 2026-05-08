@@ -8,9 +8,10 @@ import { PartnerDetail } from '@/components/layout/PartnerDetail';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getCompliance, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
+import { getCompliance, getMenuOps, getPartnerOps, getSparklines, isLive } from '@/lib/bq/use';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { detectIssues } from '@/lib/triage/activeIssue';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 
@@ -46,14 +47,16 @@ export default async function PausedPage({ searchParams }: PageProps) {
   const filter = asString(searchParams.resume);
   const detailId = asString(searchParams.id);
 
-  const [partners, compliance, sparklines, counts] = await Promise.all([
+  const [partners, compliance, sparklines, counts, menus] = await Promise.all([
     getPartnerOps(),
     getCompliance(),
     getSparklines(),
     getTabCounts(),
+    getMenuOps(),
   ]);
   const today = todayIso();
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   const views: PausedView[] = partners
     .filter((p) => p.hostStatus === 'paused')
@@ -152,13 +155,14 @@ export default async function PausedPage({ searchParams }: PageProps) {
         daysSinceLastOrder: detail.daysSinceLastOrder,
         missingItemsPct7d: detail.missingItemsPct7d,
         riderWait5minPct7d: detail.riderWait5minPct7d,
-        rejectedRate7d: detail.rejectedRate7d,
         rating28d: detail.rating28d,
         overallCompliant: complianceByPartner.get(detail.partnerId)?.row.overallCompliant ?? null,
         hasEmptyComplianceLists:
           complianceByPartner.get(detail.partnerId)?.row.hasEmptyLists ?? false,
         opsStale: detail.opsStale,
-        isOnDeliveroo: detail.isOnDeliveroo,
+        hostStatus: detail.hostStatus,
+        daysUntilResume: daysUntilResume(detail.pausedUntil),
+        inactiveMenuCount: inactiveMenuCounts.get(detail.partnerId) ?? 0,
       })
     : [];
 

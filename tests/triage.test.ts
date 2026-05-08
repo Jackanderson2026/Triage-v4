@@ -2,85 +2,92 @@ import { describe, expect, it } from 'vitest';
 import { detectIssues, selectActiveIssue, type PartnerSignals } from '@/lib/triage/activeIssue';
 
 const baseline: PartnerSignals = {
-  openRate7d: 0.98,
+  openRate7d: 0.99,
   daysSinceLastOrder: 1,
   missingItemsPct7d: 0.005,
   riderWait5minPct7d: 0.04,
-  rejectedRate7d: 0.005,
   rating28d: 4.7,
   overallCompliant: true,
   hasEmptyComplianceLists: false,
   opsStale: false,
-  isOnDeliveroo: true,
+  hostStatus: 'core_estate',
+  daysUntilResume: null,
+  inactiveMenuCount: 0,
 };
 
 describe('hierarchy active-issue selection', () => {
-  // Brief §14 EM checklist item 2 — the locked-in success-criteria assertion.
-  it('§14 success criteria: open rate 92% with low missing items + good rating ranks Open Rate breach top, no offboarding flag', () => {
+  it('open rate 96% with low missing items + good rating → open_rate_breach (Tier 8)', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      openRate7d: 0.92,
-      missingItemsPct7d: 0.015,
-      rating28d: 4.5,
-      daysSinceLastOrder: 1, // explicitly NOT inactive
+      openRate7d: 0.96, // < 0.98 internal target
     };
     const issues = detectIssues(signals);
     expect(issues).toContain('open_rate_breach');
-    expect(issues).not.toContain('inactive_offboarding_band');
-    expect(issues).not.toContain('missing_items_breach');
     expect(selectActiveIssue(issues)).toBe('open_rate_breach');
   });
 
-  it('lowest tier wins: a Tier-2 issue beats a Tier-3 issue on the same partner', () => {
+  it('lowest tier wins: paused_in_window (T2) beats missing_items_breach (T6)', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      openRate7d: 0.9, // Tier 2
-      missingItemsPct7d: 0.05, // Tier 3
+      hostStatus: 'paused',
+      daysUntilResume: 10,
+      missingItemsPct7d: 0.05,
     };
-    expect(selectActiveIssue(detectIssues(signals))).toBe('open_rate_breach');
+    expect(selectActiveIssue(detectIssues(signals))).toBe('paused_in_window');
   });
 
-  it('within-tier tiebreak: Service Pack beats Partner Agreement beats Sessions internal', () => {
-    // All three are Tier 2 but the inactive band is Service Pack-sourced and should win.
+  it('paused with negative daysUntilResume → paused_overdue, still T2', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      openRate7d: 0.9, // partner_agreement
-      daysSinceLastOrder: 22, // service_pack
-      overallCompliant: false, // sessions_internal
-      hasEmptyComplianceLists: false,
+      hostStatus: 'paused',
+      daysUntilResume: -5,
     };
-    expect(selectActiveIssue(detectIssues(signals))).toBe('inactive_offboarding_band');
+    const active = selectActiveIssue(detectIssues(signals));
+    expect(active).toBe('paused_overdue');
   });
 
-  it('inactive-offboarding only fires for Deliveroo partners', () => {
+  it('inactive ≥ 2 days fires Tier 3 inactive_partner regardless of platform', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      isOnDeliveroo: false,
-      daysSinceLastOrder: 30,
+      daysSinceLastOrder: 3,
     };
-    expect(detectIssues(signals)).not.toContain('inactive_offboarding_band');
+    expect(detectIssues(signals)).toContain('inactive_partner');
+  });
+
+  it('inactive 1 day does NOT fire Tier 3 (threshold is ≥ 2)', () => {
+    const signals: PartnerSignals = {
+      ...baseline,
+      daysSinceLastOrder: 1,
+    };
+    expect(detectIssues(signals)).not.toContain('inactive_partner');
+  });
+
+  it('inactiveMenuCount > 0 fires Tier 4 inactive_menus', () => {
+    const signals: PartnerSignals = {
+      ...baseline,
+      inactiveMenuCount: 1,
+    };
+    expect(detectIssues(signals)).toContain('inactive_menus');
   });
 
   it('clean partner — no issues', () => {
-    const issues = detectIssues(baseline);
-    expect(issues).toEqual([]);
-    expect(selectActiveIssue(issues)).toBeNull();
+    expect(detectIssues(baseline)).toEqual([]);
+    expect(selectActiveIssue([])).toBeNull();
   });
 
-  it('null signals do not trigger their thresholds', () => {
+  it('null signals do not fire their thresholds', () => {
     const signals: PartnerSignals = {
       ...baseline,
       openRate7d: null,
       missingItemsPct7d: null,
       riderWait5minPct7d: null,
-      rejectedRate7d: null,
       rating28d: null,
       daysSinceLastOrder: null,
     };
     expect(detectIssues(signals)).toEqual([]);
   });
 
-  it('overall_compliant=false with empty item lists is a Tier-1 data-quality flag (not Tier-2 compliance)', () => {
+  it('overall_compliant=false with empty item lists is a Tier-1 data-quality flag (not Tier-5 compliance)', () => {
     const signals: PartnerSignals = {
       ...baseline,
       overallCompliant: false,
@@ -90,5 +97,35 @@ describe('hierarchy active-issue selection', () => {
     expect(issues).toContain('data_quality_compliance_empty');
     expect(issues).not.toContain('compliance_non_compliant');
     expect(selectActiveIssue(issues)).toBe('data_quality_compliance_empty');
+  });
+
+  it('rating < 4.2 fires Tier 7 (was 4.4 — May 2026 retune)', () => {
+    const signals: PartnerSignals = {
+      ...baseline,
+      rating28d: 4.15,
+    };
+    expect(detectIssues(signals)).toContain('rating_below_target');
+  });
+
+  it('rating 4.21 does NOT fire (just above the threshold)', () => {
+    const signals: PartnerSignals = {
+      ...baseline,
+      rating28d: 4.21,
+    };
+    expect(detectIssues(signals)).not.toContain('rating_below_target');
+  });
+
+  it('open rate 0.97 fires Tier 8 (Sessions internal 98%, stricter than the contractual 95%)', () => {
+    const signals: PartnerSignals = {
+      ...baseline,
+      openRate7d: 0.97,
+    };
+    expect(detectIssues(signals)).toContain('open_rate_breach');
+  });
+
+  it('reject_rate is no longer surfaced in the queue (its tier is null)', () => {
+    // detectIssues never adds reject_rate_breach as a queue trigger.
+    const issues = detectIssues(baseline);
+    expect(issues).not.toContain('reject_rate_breach');
   });
 });

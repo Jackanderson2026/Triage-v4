@@ -9,6 +9,7 @@ import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
 import { listActiveAnnotations } from '@/lib/annotations';
 import { scoreSite } from '@/lib/offboarding-risk/scoring';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
+import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import {
   INACTIVE_CORE_THRESHOLD_DAYS,
   INACTIVE_MENU_THRESHOLD_DAYS,
@@ -21,6 +22,7 @@ export interface TabCounts {
   inactiveMenus: number;
   paused: number;
   nonCompliant: number;
+  rejectedOrders: number;
 }
 
 const ELIGIBLE_INACTIVE_STATUSES = new Set(['core_estate', 'trial_period']);
@@ -35,25 +37,27 @@ export async function getTabCounts(): Promise<TabCounts> {
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
 
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
+  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
   // Queue: number of partners with at least one issue firing, excluding
-  // churned/paused-snoozed annotations. Mirrors app/queue/page.tsx.
+  // churned-snoozed annotations. Paused partners now stay in the queue.
   let queue = 0;
   for (const p of partners) {
     const ann = annotations.get(p.partnerId);
-    if (ann?.annotationType === 'churned' || ann?.annotationType === 'paused') continue;
+    if (ann?.annotationType === 'churned') continue;
     const pcomp = complianceByPartner.get(p.partnerId)?.row;
     const issues = detectIssues({
       openRate7d: p.openRate7d,
       daysSinceLastOrder: p.daysSinceLastOrder,
       missingItemsPct7d: p.missingItemsPct7d,
       riderWait5minPct7d: p.riderWait5minPct7d,
-      rejectedRate7d: p.rejectedRate7d,
       rating28d: p.rating28d,
       overallCompliant: pcomp ? pcomp.overallCompliant : null,
       hasEmptyComplianceLists: pcomp ? pcomp.hasEmptyLists : false,
       opsStale: p.opsStale,
-      isOnDeliveroo: p.isOnDeliveroo,
+      hostStatus: p.hostStatus,
+      daysUntilResume: daysUntilResume(p.pausedUntil),
+      inactiveMenuCount: inactiveMenuCounts.get(p.partnerId) ?? 0,
     });
     if (selectActiveIssue(issues)) queue += 1;
   }
@@ -80,7 +84,9 @@ export async function getTabCounts(): Promise<TabCounts> {
 
   const nonCompliant = compliance.filter((c) => !c.overallCompliant).length;
 
-  return { queue, offboarding, inactiveCore, inactiveMenus, paused, nonCompliant };
+  const rejectedOrders = partners.filter((p) => p.rejectedCount7d > 0).length;
+
+  return { queue, offboarding, inactiveCore, inactiveMenus, paused, nonCompliant, rejectedOrders };
 }
 
 export function applyTabCounts(
@@ -106,6 +112,8 @@ export function applyTabCounts(
         return { ...t, countLabel: counts.paused ? `${counts.paused}` : undefined };
       case '/non-compliant':
         return { ...t, countLabel: counts.nonCompliant ? `${counts.nonCompliant}` : undefined };
+      case '/rejected-orders':
+        return { ...t, countLabel: counts.rejectedOrders ? `${counts.rejectedOrders}` : undefined };
       default:
         return t;
     }
