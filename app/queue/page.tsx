@@ -43,7 +43,9 @@ function toTagAnn(a: AnnotationType): TagAnnotationType {
 }
 
 // Sub-tab filter buckets — each maps to a set of issue codes that mean "this
-// partner belongs in this bucket". Order matches the queue hierarchy.
+// partner belongs in this bucket". Order matches the queue hierarchy. The
+// 'clean' bucket is special: partners with no active issue at all.
+const CLEAN_KEY = 'clean';
 const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = [
   { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty', 'data_quality_ops_stale'] },
   { key: 'paused', label: 'Paused', codes: ['paused_overdue', 'paused_in_window'] },
@@ -128,8 +130,12 @@ export default async function QueuePage({ searchParams }: PageProps) {
 
   // Counts per bucket — pre-tier-filter so chips show the unfiltered totals.
   const bucketCounts = new Map<string, number>();
+  let cleanCount = 0;
   for (const v of views) {
-    if (!v.activeIssue) continue;
+    if (!v.activeIssue) {
+      cleanCount += 1;
+      continue;
+    }
     for (const b of TIER_BUCKETS) {
       if (b.codes.includes(v.activeIssue)) {
         bucketCounts.set(b.key, (bucketCounts.get(b.key) ?? 0) + 1);
@@ -138,10 +144,13 @@ export default async function QueuePage({ searchParams }: PageProps) {
   }
 
   // Apply the tier filter (if any) to the visible views.
-  const tierBucket = tierFilter ? TIER_BUCKETS.find((b) => b.key === tierFilter) : null;
-  const visibleViews = tierBucket
-    ? views.filter((v) => v.activeIssue !== null && tierBucket.codes.includes(v.activeIssue))
-    : views;
+  const tierBucket = tierFilter && tierFilter !== CLEAN_KEY ? TIER_BUCKETS.find((b) => b.key === tierFilter) : null;
+  const visibleViews =
+    tierFilter === CLEAN_KEY
+      ? views.filter((v) => v.activeIssue === null)
+      : tierBucket
+        ? views.filter((v) => v.activeIssue !== null && tierBucket.codes.includes(v.activeIssue))
+        : views.filter((v) => v.activeIssue !== null); // 'All' = all firing partners; clean partners only via their tab
 
   // Build the sub-tab list with hrefs that preserve global filters.
   const baseParams = new URLSearchParams();
@@ -154,7 +163,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
     return qs ? `/queue?${qs}` : '/queue';
   }
   const subTabs: SubTab[] = [
-    { key: 'all', label: 'All', href: tierHref(null), count: views.length, active: !tierFilter },
+    { key: 'all', label: 'All', href: tierHref(null), count: views.filter((v) => v.activeIssue !== null).length, active: !tierFilter },
     ...TIER_BUCKETS.map((b) => ({
       key: b.key,
       label: b.label,
@@ -162,6 +171,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
       count: bucketCounts.get(b.key) ?? 0,
       active: tierFilter === b.key,
     })),
+    { key: CLEAN_KEY, label: 'Clean', href: tierHref(CLEAN_KEY), count: cleanCount, active: tierFilter === CLEAN_KEY },
   ];
 
   return (
@@ -202,11 +212,13 @@ export default async function QueuePage({ searchParams }: PageProps) {
             fontFamily: fonts.body,
           }}
         >
-          {tierFilter
-            ? `No partners with an active ${tierBucket?.label ?? tierFilter} issue.`
-            : partnerType || brandStack
-              ? 'No partners match the current filters. Clear filters to see all.'
-              : 'No partners with active issues. Check back after the next data refresh.'}
+          {tierFilter === CLEAN_KEY
+            ? 'No clean partners. Every partner has at least one issue firing.'
+            : tierFilter
+              ? `No partners with an active ${tierBucket?.label ?? tierFilter} issue.`
+              : partnerType || brandStack
+                ? 'No partners match the current filters. Clear filters to see all.'
+                : 'No partners with active issues. Check back after the next data refresh.'}
         </div>
       ) : (
         visibleViews.map((v, i) => (
