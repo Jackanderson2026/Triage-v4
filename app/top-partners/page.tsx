@@ -107,22 +107,9 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
     ? views.filter((v) => activeBrand.matches(v.partner.brandStack ?? ''))
     : views;
 
-  // Group by brand stack. Partners with no stack go to a single "Unassigned" bucket.
-  const groups = new Map<string, PartnerView[]>();
-  for (const v of brandFilteredViews) {
-    const key = v.partner.brandStack ?? 'Unassigned';
-    const list = groups.get(key) ?? [];
-    list.push(v);
-    groups.set(key, list);
-  }
-  // Sort each group by 28d GMV desc.
-  groups.forEach((list) => list.sort((a, b) => b.partner.gmv28d - a.partner.gmv28d));
-  // Stack order: by total 28d GMV desc.
-  const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
-    const ga = a[1].reduce((s, v) => s + v.partner.gmv28d, 0);
-    const gb = b[1].reduce((s, v) => s + v.partner.gmv28d, 0);
-    return gb - ga;
-  });
+  // Flat list, ranked by 28d GMV desc. The brand sub-tabs above already
+  // segment by stack — section dividers within a sub-tab were redundant.
+  const ranked = [...brandFilteredViews].sort((a, b) => b.partner.gmv28d - a.partner.gmv28d);
 
   // Counts for getTabCounts - skip; this tab doesn't have a count badge.
   const fakeCounts = {
@@ -176,26 +163,14 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
         </div>
       )}
       <SubTabNav tabs={subTabs} />
-      {sortedGroups.length === 0 ? (
+      {ranked.length === 0 ? (
         <div style={emptyState}>
           {activeBrand
             ? `No partners running ${activeBrand.label}. The fixture set may not include this brand yet.`
             : 'No partners match the current filters.'}
         </div>
       ) : (
-        sortedGroups.map(([stackName, list]) => (
-          <section key={stackName} style={{ marginBottom: space[6] }}>
-            <div style={stackHeader}>
-              <span style={{ fontSize: text.lg, fontWeight: 700, color: colors.ink }}>{stackName}</span>
-              <span style={{ fontSize: text.xs, color: colors.ink50, marginLeft: space[3] }}>
-                {list.length} partner{list.length === 1 ? '' : 's'} · {gbp(list.reduce((s, v) => s + v.partner.gmv28d, 0))} 28d GMV
-              </span>
-            </div>
-            {list.map((v, i) => (
-              <PartnerRow key={v.partner.partnerId} view={v} rank={i + 1} />
-            ))}
-          </section>
-        ))
+        ranked.map((v, i) => <PartnerRow key={v.partner.partnerId} view={v} rank={i + 1} />)
       )}
       {/* avoid unused - keeping for future tabCounts wiring */}
       <span style={{ display: 'none' }}>{JSON.stringify(fakeCounts)}</span>
@@ -210,16 +185,6 @@ const emptyState: CSSProperties = {
   background: colors.white,
   border: `1px solid ${colors.border}`,
   borderRadius: radii.lg,
-  fontFamily: fonts.body,
-};
-
-const stackHeader: CSSProperties = {
-  padding: `${space[3]} ${space[4]}`,
-  background: colors.grapeSoft,
-  borderRadius: radii.sm,
-  marginBottom: space[2],
-  display: 'flex',
-  alignItems: 'baseline',
   fontFamily: fonts.body,
 };
 
@@ -264,7 +229,7 @@ function PartnerRow({ view, rank }: { view: PartnerView; rank: number }) {
           {partner.partnerName ?? partner.partnerId}
         </a>
         <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
-          {partner.partnerType ?? '—'} · {partner.platforms.join(' / ') || '—'} · {partner.hostStatus ?? '—'}
+          {partner.brandStack ?? 'Unassigned'} · {partner.partnerType ?? '—'} · {partner.platforms.join(' / ') || '—'} · {partner.hostStatus ?? '—'}
         </div>
       </div>
       <div style={{ display: 'flex', gap: space[1], flexWrap: 'wrap', maxWidth: '50%', justifyContent: 'flex-end' }}>
