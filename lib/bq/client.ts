@@ -43,9 +43,21 @@ export async function runQuery<T>(
   params: Record<string, unknown> = {},
 ): Promise<QueryResult<T>> {
   const bq = getBigQuery();
+
+  // BigQuery refuses empty array params unless their type is declared. Auto-tag
+  // any empty arrays as STRING (the only empty-array param we use is a venue-ID
+  // list — string-typed). Callers can override by passing the type-tagged value
+  // form before this point.
+  // The SDK's QueryParamTypes is a struct-shape; any-cast keeps TS happy.
+  const types: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v) && v.length === 0) types[k] = ['STRING'];
+  }
+
   const [job] = await bq.createQueryJob({
     query,
     params,
+    ...(Object.keys(types).length > 0 ? { types: types as never } : {}),
     useLegacySql: false,
     // Datasets in sessions-core-data live in europe-west2 (London), not the
     // multi-region EU. Hardcoded — no datasets exist outside this region.
