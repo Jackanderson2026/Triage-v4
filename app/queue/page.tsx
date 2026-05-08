@@ -61,6 +61,7 @@ const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = 
 export default async function QueuePage({ searchParams }: PageProps) {
   const partnerType = asString(searchParams.partnerType);
   const brandStack = asString(searchParams.brandStack);
+  const hostStatus = asString(searchParams.hostStatus);
   const tierFilter = asString(searchParams.tier);
 
   const [partners, compliance, sparklines, counts, menus, brands] = await Promise.all([
@@ -77,7 +78,8 @@ export default async function QueuePage({ searchParams }: PageProps) {
 
   const views = partners
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
-    .filter((p) => (brandStack ? p.brandStack?.includes(brandStack) : true))
+    .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))
+    .filter((p) => (hostStatus ? p.hostStatus === hostStatus : true))
     .map((partner) => {
       const pcomp = complianceByPartner.get(partner.partnerId) ?? null;
       const cRow = pcomp?.row ?? null;
@@ -156,6 +158,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const baseParams = new URLSearchParams();
   if (partnerType) baseParams.set('partnerType', partnerType);
   if (brandStack) baseParams.set('brandStack', brandStack);
+  if (hostStatus) baseParams.set('hostStatus', hostStatus);
   function tierHref(tier: string | null): string {
     const p = new URLSearchParams(baseParams.toString());
     if (tier) p.set('tier', tier);

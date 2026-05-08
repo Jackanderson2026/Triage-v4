@@ -33,13 +33,15 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
   const sortKey: SortKey = (asString(searchParams.sort) as SortKey) || 'spend28d';
   const partnerType = asString(searchParams.partnerType);
   const brandStack = asString(searchParams.brandStack);
+  const hostStatus = asString(searchParams.hostStatus);
 
   const [partners, counts] = await Promise.all([getPartnerOps(), getTabCounts()]);
 
   const filtered = partners
     .filter((p) => p.adSpend28d > 0)
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
-    .filter((p) => (brandStack ? p.brandStack?.includes(brandStack) : true))
+    .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))
+    .filter((p) => (hostStatus ? p.hostStatus === hostStatus : true))
     .map((p) => ({
       ...p,
       ratio: p.gmv28d > 0 ? p.adSpend28d / p.gmv28d : 0,
@@ -76,7 +78,7 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
     {
       key: 'spend7d',
       header: (
-        <a href={hrefFor('spend7d', partnerType, brandStack)} style={sortHeader(sortKey === 'spend7d')}>
+        <a href={hrefFor('spend7d', partnerType, brandStack, hostStatus)} style={sortHeader(sortKey === 'spend7d')}>
           7d spend
         </a>
       ) as unknown as string,
@@ -89,7 +91,7 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
     {
       key: 'spend28d',
       header: (
-        <a href={hrefFor('spend28d', partnerType, brandStack)} style={sortHeader(sortKey === 'spend28d')}>
+        <a href={hrefFor('spend28d', partnerType, brandStack, hostStatus)} style={sortHeader(sortKey === 'spend28d')}>
           28d spend
         </a>
       ) as unknown as string,
@@ -104,7 +106,7 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
     {
       key: 'spendMtd',
       header: (
-        <a href={hrefFor('spendMtd', partnerType, brandStack)} style={sortHeader(sortKey === 'spendMtd')}>
+        <a href={hrefFor('spendMtd', partnerType, brandStack, hostStatus)} style={sortHeader(sortKey === 'spendMtd')}>
           MTD spend
         </a>
       ) as unknown as string,
@@ -117,7 +119,7 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
     {
       key: 'ratio',
       header: (
-        <a href={hrefFor('ratio', partnerType, brandStack)} style={sortHeader(sortKey === 'ratio')}>
+        <a href={hrefFor('ratio', partnerType, brandStack, hostStatus)} style={sortHeader(sortKey === 'ratio')}>
           Spend / 28d GMV
         </a>
       ) as unknown as string,
@@ -188,11 +190,17 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
   );
 }
 
-function hrefFor(sort: SortKey, partnerType: string | null, brandStack: string | null): string {
+function hrefFor(
+  sort: SortKey,
+  partnerType: string | null,
+  brandStack: string | null,
+  hostStatus: string | null,
+): string {
   const params = new URLSearchParams();
   params.set('sort', sort);
   if (partnerType) params.set('partnerType', partnerType);
   if (brandStack) params.set('brandStack', brandStack);
+  if (hostStatus) params.set('hostStatus', hostStatus);
   return `/ad-spend?${params.toString()}`;
 }
 

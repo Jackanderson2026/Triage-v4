@@ -60,6 +60,7 @@ const BRAND_SUBTABS: Array<{ key: string; label: string; matches: (stack: string
 export default async function TopPartnersPage({ searchParams }: PageProps) {
   const partnerType = asString(searchParams.partnerType);
   const brandStack = asString(searchParams.brandStack);
+  const hostStatus = asString(searchParams.hostStatus);
   const brandTab = asString(searchParams.brand);
 
   const [partners, compliance, menus] = await Promise.all([
@@ -72,7 +73,8 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
 
   const views: PartnerView[] = partners
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
-    .filter((p) => (brandStack ? p.brandStack?.includes(brandStack) : true))
+    .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))
+    .filter((p) => (hostStatus ? p.hostStatus === hostStatus : true))
     .map((p) => {
       const cRow = complianceByPartner.get(p.partnerId)?.row ?? null;
       return {
@@ -122,6 +124,7 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
   const baseParams = new URLSearchParams();
   if (partnerType) baseParams.set('partnerType', partnerType);
   if (brandStack) baseParams.set('brandStack', brandStack);
+  if (hostStatus) baseParams.set('hostStatus', hostStatus);
   function brandHref(brand: string | null): string {
     const p = new URLSearchParams(baseParams.toString());
     if (brand) p.set('brand', brand);

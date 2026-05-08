@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition, type CSSProperties } from 'react';
 import { tokens } from '@/components/primitives';
-import { BRAND_STACKS, PARTNER_TYPES } from '@/lib/triage/enums';
+import { BRAND_STACKS, HOST_STATUSES, PARTNER_TYPES } from '@/lib/triage/enums';
 
 const { colors, fonts, radii, space, text } = tokens;
 
@@ -11,10 +11,16 @@ const wrapperStyle: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
-  gap: space[4],
+  gap: space[5],
   fontFamily: fonts.body,
   fontSize: text.sm,
   color: colors.ink70,
+};
+
+const groupStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: space[2],
 };
 
 const labelStyle: CSSProperties = {
@@ -22,17 +28,31 @@ const labelStyle: CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
   color: colors.ink50,
-  marginRight: space[2],
 };
 
-const selectStyle: CSSProperties = {
-  fontFamily: fonts.body,
-  fontSize: text.sm,
-  padding: `${space[1]} ${space[2]}`,
+const buttonsStyle: CSSProperties = {
+  display: 'flex',
+  gap: space[1],
+  flexWrap: 'wrap',
+};
+
+const baseChip: CSSProperties = {
+  padding: `${space[1]} ${space[3]}`,
   border: `1px solid ${colors.border}`,
   borderRadius: radii.sm,
+  fontSize: text.xs,
+  fontWeight: 600,
   background: colors.white,
-  color: colors.ink,
+  color: colors.ink70,
+  cursor: 'pointer',
+  fontFamily: fonts.body,
+};
+
+const activeChip: CSSProperties = {
+  ...baseChip,
+  background: colors.grapeSoft,
+  border: `1px solid ${colors.grape}`,
+  color: colors.grape,
 };
 
 const linkStyle: CSSProperties = {
@@ -45,66 +65,93 @@ const linkStyle: CSSProperties = {
   padding: 0,
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  core_estate: 'Core Estate',
+  trial_period: 'Trial',
+  paused: 'Paused',
+  churned: 'Churned',
+};
+
 export function GlobalFilterBar() {
   const router = useRouter();
   const params = useSearchParams();
   const [pending, start] = useTransition();
   const partnerType = params.get('partnerType') ?? '';
   const brandStack = params.get('brandStack') ?? '';
-  const hasActive = partnerType !== '' || brandStack !== '';
-
-  function update(next: URLSearchParams) {
-    const qs = next.toString();
-    start(() => router.push(qs ? `?${qs}` : '?'));
-  }
+  const hostStatus = params.get('hostStatus') ?? '';
+  const hasActive = partnerType !== '' || brandStack !== '' || hostStatus !== '';
 
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
     else next.delete(key);
-    update(next);
+    const qs = next.toString();
+    start(() => router.push(qs ? `?${qs}` : '?'));
   }
 
   function clear() {
     const next = new URLSearchParams(params.toString());
     next.delete('partnerType');
     next.delete('brandStack');
-    update(next);
+    next.delete('hostStatus');
+    const qs = next.toString();
+    start(() => router.push(qs ? `?${qs}` : '?'));
+  }
+
+  function ChipRow<T extends string>({
+    paramKey,
+    current,
+    options,
+    labelLookup,
+  }: {
+    paramKey: string;
+    current: string;
+    options: readonly T[] | T[];
+    labelLookup?: Record<string, string>;
+  }) {
+    return (
+      <div style={buttonsStyle}>
+        <button
+          type="button"
+          style={current === '' ? activeChip : baseChip}
+          onClick={() => setFilter(paramKey, '')}
+          disabled={pending}
+        >
+          All
+        </button>
+        {options.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            style={current === opt ? activeChip : baseChip}
+            onClick={() => setFilter(paramKey, current === opt ? '' : opt)}
+            disabled={pending}
+          >
+            {labelLookup?.[opt] ?? opt}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   return (
     <div style={wrapperStyle}>
-      <div>
-        <label style={labelStyle}>Partner type</label>
-        <select
-          style={selectStyle}
-          value={partnerType}
-          onChange={(e) => setFilter('partnerType', e.target.value)}
-          disabled={pending}
-        >
-          <option value="">All</option>
-          {PARTNER_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+      <div style={groupStyle}>
+        <span style={labelStyle}>Partner type</span>
+        <ChipRow paramKey="partnerType" current={partnerType} options={PARTNER_TYPES} />
       </div>
-      <div>
-        <label style={labelStyle}>Brand stack</label>
-        <select
-          style={selectStyle}
-          value={brandStack}
-          onChange={(e) => setFilter('brandStack', e.target.value)}
-          disabled={pending}
-        >
-          <option value="">All</option>
-          {BRAND_STACKS.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
+      <div style={groupStyle}>
+        <span style={labelStyle}>Brand stack</span>
+        <ChipRow paramKey="brandStack" current={brandStack} options={BRAND_STACKS} />
+      </div>
+      <div style={groupStyle}>
+        <span style={labelStyle}>Status</span>
+        <ChipRow
+          paramKey="hostStatus"
+          current={hostStatus}
+          options={HOST_STATUSES}
+          labelLookup={STATUS_LABELS}
+        />
       </div>
       {hasActive && (
         <button type="button" style={linkStyle} onClick={clear} disabled={pending}>

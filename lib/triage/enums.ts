@@ -22,13 +22,15 @@ export const HOST_STATUSES = [
 export type HostStatus = (typeof HOST_STATUSES)[number];
 
 // partner_type — brief §15 #13 + §5.2 normalisation note ('Duet only' → 'Delivery').
-// The renamed value lives here, not the raw 'Duet only', so every UI surface
-// shares the normalised label.
-export const PARTNER_TYPES = ['Delivery', 'QSR', 'Multi-site', 'Independent'] as const;
+// AM-set May 2026: filter restricted to QSR + Delivery only. Other raw values
+// in the column ('Multi-site', 'Independent', etc.) still flow through to data
+// rows but aren't exposed as filter buttons.
+export const PARTNER_TYPES = ['Delivery', 'QSR'] as const;
 export type PartnerType = (typeof PARTNER_TYPES)[number];
 
-// brand_stack — brief §15 #14, sample values seen: 'RUD', 'SBB'.
-export const BRAND_STACKS: string[] = ['RUD', 'SBB'];
+// brand_stack — brief §15 #14. Filter buttons match brand_stack via
+// case-insensitive substring (so 'SoBe + Rudi's' counts as both SoBe and Rudis).
+export const BRAND_STACKS: string[] = ['SoBe', "Rudi's", 'Smashed'];
 
 // Normalisation helper from §5.2.
 export function normalisePartnerType(raw: string | null | undefined): string | null {
