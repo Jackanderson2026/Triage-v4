@@ -43,9 +43,5 @@ export const TAB_TAGS = {
   queue: 'tab:queue',
   offboarding: 'tab:offboarding',
   rejectedOrders: 'tab:rejected-orders',
-  inactiveCore: 'tab:inactive-core',
-  inactiveMenus: 'tab:inactive-menus',
-  paused: 'tab:paused',
-  nonCompliant: 'tab:non-compliant',
 } as const;
 export type TabTag = (typeof TAB_TAGS)[keyof typeof TAB_TAGS];

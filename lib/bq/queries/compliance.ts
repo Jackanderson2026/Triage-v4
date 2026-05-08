@@ -126,7 +126,7 @@ async function fetchComplianceRaw(): Promise<ComplianceRow[]> {
 }
 
 export const fetchCompliance = cachedQuery(fetchComplianceRaw, {
-  tag: TAB_TAGS.nonCompliant,
+  tag: TAB_TAGS.queue,
   ttlSeconds: TTL.monthly,
   extraTags: ['metric:compliance'],
 });

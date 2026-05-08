@@ -10,22 +10,12 @@ import { listActiveAnnotations } from '@/lib/annotations';
 import { scoreSite } from '@/lib/offboarding-risk/scoring';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
-import {
-  INACTIVE_CORE_THRESHOLD_DAYS,
-  INACTIVE_MENU_THRESHOLD_DAYS,
-} from '@/lib/triage/thresholds';
 
 export interface TabCounts {
   queue: number;
   offboarding: { critical: number; red: number; amber: number };
-  inactiveCore: number;
-  inactiveMenus: number;
-  paused: number;
-  nonCompliant: number;
   rejectedOrders: number;
 }
-
-const ELIGIBLE_INACTIVE_STATUSES = new Set(['core_estate', 'trial_period']);
 
 export async function getTabCounts(): Promise<TabCounts> {
   const [partners, menus, signals, compliance] = await Promise.all([
@@ -69,24 +59,9 @@ export async function getTabCounts(): Promise<TabCounts> {
     amber: risks.filter((r) => r.band === 'amber').length,
   };
 
-  const inactiveCore = partners.filter(
-    (p) =>
-      p.hostStatus !== null &&
-      ELIGIBLE_INACTIVE_STATUSES.has(p.hostStatus) &&
-      (p.daysSinceLastOrder === null || p.daysSinceLastOrder >= INACTIVE_CORE_THRESHOLD_DAYS),
-  ).length;
-
-  const inactiveMenus = menus.filter(
-    (m) => m.daysSinceLastOrder === null || m.daysSinceLastOrder >= INACTIVE_MENU_THRESHOLD_DAYS,
-  ).length;
-
-  const paused = partners.filter((p) => p.hostStatus === 'paused').length;
-
-  const nonCompliant = compliance.filter((c) => !c.overallCompliant).length;
-
   const rejectedOrders = partners.filter((p) => p.rejectedCount7d > 0).length;
 
-  return { queue, offboarding, inactiveCore, inactiveMenus, paused, nonCompliant, rejectedOrders };
+  return { queue, offboarding, rejectedOrders };
 }
 
 export function applyTabCounts(
@@ -100,18 +75,11 @@ export function applyTabCounts(
       case '/offboarding-risk':
         return {
           ...t,
-          countLabel: counts.offboarding.critical || counts.offboarding.red || counts.offboarding.amber
-            ? `${counts.offboarding.critical}C · ${counts.offboarding.red}R · ${counts.offboarding.amber}A`
-            : undefined,
+          countLabel:
+            counts.offboarding.critical || counts.offboarding.red || counts.offboarding.amber
+              ? `${counts.offboarding.critical}C · ${counts.offboarding.red}R · ${counts.offboarding.amber}A`
+              : undefined,
         };
-      case '/inactive-core':
-        return { ...t, countLabel: counts.inactiveCore ? `${counts.inactiveCore}` : undefined };
-      case '/inactive-menus':
-        return { ...t, countLabel: counts.inactiveMenus ? `${counts.inactiveMenus}` : undefined };
-      case '/paused':
-        return { ...t, countLabel: counts.paused ? `${counts.paused}` : undefined };
-      case '/non-compliant':
-        return { ...t, countLabel: counts.nonCompliant ? `${counts.nonCompliant}` : undefined };
       case '/rejected-orders':
         return { ...t, countLabel: counts.rejectedOrders ? `${counts.rejectedOrders}` : undefined };
       default:

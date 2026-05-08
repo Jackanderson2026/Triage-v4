@@ -125,7 +125,7 @@ async function fetchMenuOpsRaw(): Promise<MenuOpsRow[]> {
 }
 
 export const fetchMenuOps = cachedQuery(fetchMenuOpsRaw, {
-  tag: TAB_TAGS.inactiveMenus,
+  tag: TAB_TAGS.queue,
   ttlSeconds: TTL.ops,
   extraTags: ['metric:menu-ops'],
 });

@@ -52,9 +52,6 @@ export const INACTIVE_BANDS_DAYS = {
 // @source Deliveroo Service Pack 2025 Renewal §7.2.1.
 // "has not processed any orders in the preceding month" → 28+ days fires.
 
-export const INACTIVE_CORE_THRESHOLD_DAYS = 1;
-// @source Brief §7 Tab 3 — sites in Core Estate / Trial that haven't ordered for 1+ days.
-
 export const INACTIVE_PARTNER_THRESHOLD_DAYS = 2;
 // @source Triage hierarchy (May 2026). Partner-grain queue trigger — fires for
 // any partner who hasn't taken an order in 2+ days, regardless of platform.
