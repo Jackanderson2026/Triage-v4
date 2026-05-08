@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
+import { SubTabNav, type SubTab } from '@/components/layout/SubTabNav';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getCompliance, getMenuOps, getPartnerOps, isLive } from '@/lib/bq/use';
@@ -47,9 +48,19 @@ interface PartnerView {
   issues: IssueCode[];
 }
 
+// Brand-stack sub-tabs. Match is "brand_stack contains the brand name" (case-
+// insensitive substring), so a partner running "SoBe + Rudi's" appears under
+// both SoBe and Rudis. Ordered by the user's stated priority list.
+const BRAND_SUBTABS: Array<{ key: string; label: string; matches: (stack: string) => boolean }> = [
+  { key: 'sobe', label: 'SoBe', matches: (s) => /sobe/i.test(s) },
+  { key: 'rudis', label: "Rudi's", matches: (s) => /rudi/i.test(s) },
+  { key: 'smashed', label: 'Smashed', matches: (s) => /smashed/i.test(s) },
+];
+
 export default async function TopPartnersPage({ searchParams }: PageProps) {
   const partnerType = asString(searchParams.partnerType);
   const brandStack = asString(searchParams.brandStack);
+  const brandTab = asString(searchParams.brand);
 
   const [partners, compliance, menus] = await Promise.all([
     getPartnerOps(),
@@ -82,9 +93,23 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
       };
     });
 
+  // Brand-tab counts (computed from the unfiltered views so chips show totals).
+  const brandCounts = new Map<string, number>();
+  for (const v of views) {
+    const stack = v.partner.brandStack ?? '';
+    for (const tab of BRAND_SUBTABS) {
+      if (tab.matches(stack)) brandCounts.set(tab.key, (brandCounts.get(tab.key) ?? 0) + 1);
+    }
+  }
+
+  const activeBrand = brandTab ? BRAND_SUBTABS.find((t) => t.key === brandTab) : null;
+  const brandFilteredViews = activeBrand
+    ? views.filter((v) => activeBrand.matches(v.partner.brandStack ?? ''))
+    : views;
+
   // Group by brand stack. Partners with no stack go to a single "Unassigned" bucket.
   const groups = new Map<string, PartnerView[]>();
-  for (const v of views) {
+  for (const v of brandFilteredViews) {
     const key = v.partner.brandStack ?? 'Unassigned';
     const list = groups.get(key) ?? [];
     list.push(v);
@@ -105,6 +130,27 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
     offboarding: { critical: 0, red: 0, amber: 0 },
     rejectedOrders: 0,
   };
+
+  // Build the brand sub-tab list with hrefs that preserve global filters.
+  const baseParams = new URLSearchParams();
+  if (partnerType) baseParams.set('partnerType', partnerType);
+  if (brandStack) baseParams.set('brandStack', brandStack);
+  function brandHref(brand: string | null): string {
+    const p = new URLSearchParams(baseParams.toString());
+    if (brand) p.set('brand', brand);
+    const qs = p.toString();
+    return qs ? `/top-partners?${qs}` : '/top-partners';
+  }
+  const subTabs: SubTab[] = [
+    { key: 'all', label: 'All', href: brandHref(null), count: views.length, active: !brandTab },
+    ...BRAND_SUBTABS.map((b) => ({
+      key: b.key,
+      label: b.label,
+      href: brandHref(b.key),
+      count: brandCounts.get(b.key) ?? 0,
+      active: brandTab === b.key,
+    })),
+  ];
 
   return (
     <Shell
@@ -129,8 +175,13 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
           Portfolio overview — every partner, grouped by brand stack, ranked by 28d GMV. Issue pills are RAG-coloured by hierarchy tier.
         </div>
       )}
+      <SubTabNav tabs={subTabs} />
       {sortedGroups.length === 0 ? (
-        <div style={emptyState}>No partners match the current filters.</div>
+        <div style={emptyState}>
+          {activeBrand
+            ? `No partners running ${activeBrand.label}. The fixture set may not include this brand yet.`
+            : 'No partners match the current filters.'}
+        </div>
       ) : (
         sortedGroups.map(([stackName, list]) => (
           <section key={stackName} style={{ marginBottom: space[6] }}>
