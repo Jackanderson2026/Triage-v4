@@ -5,18 +5,10 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
-import { Tag, tokens } from '@/components/primitives';
+import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import {
-  getCompliance,
-  getMenuOps,
-  getOffboardingSignals,
-  getPartnerOps,
-} from '@/lib/bq/use';
-import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
-import { ISSUE_CATALOGUE, type IssueCode } from '@/lib/triage/hierarchy';
-import { buildComplianceByPartner } from '@/lib/triage/compliance';
-import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
+import { getMenuOffboardingSignals } from '@/lib/bq/use';
+import type { MenuOffboardingSignalRow } from '@/lib/bq/queries/menuOffboardingSignals';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 import {
   INACTIVE_BANDS_DAYS,
@@ -36,21 +28,7 @@ function asString(v: string | string[] | undefined): string | null {
   return null;
 }
 
-interface SiteRow {
-  partnerId: string;
-  partnerName: string | null;
-  brandStack: string | null;
-  daysSinceLastOrder: number | null;
-  riderWait3m: number | null;
-  missingItems3m: number | null;
-  inactiveSeverity: 'green' | 'amber' | 'red' | 'critical';
-  riderSeverity: 'green' | 'amber' | 'red' | 'critical';
-  missingSeverity: 'green' | 'amber' | 'red' | 'critical';
-  /** Triage-hierarchy active-issue tier + label, when this site appears in the queue. */
-  queueIssue: IssueCode | null;
-}
-
-type Severity = SiteRow['inactiveSeverity'];
+type Severity = 'green' | 'amber' | 'red' | 'critical';
 
 function inactiveSeverity(days: number | null): Severity {
   if (days === null) return 'green';
@@ -60,7 +38,10 @@ function inactiveSeverity(days: number | null): Severity {
   return 'green';
 }
 
-function pctSeverity(value: number | null, bands: { critical: number; red: number; amber: number }): Severity {
+function pctSeverity(
+  value: number | null,
+  bands: { critical: number; red: number; amber: number },
+): Severity {
   if (value === null) return 'green';
   if (value >= bands.critical) return 'critical';
   if (value >= bands.red) return 'red';
@@ -91,162 +72,160 @@ function cellStyle(sev: Severity): CSSProperties {
 
 const SEVERITY_RANK: Record<Severity, number> = { green: 0, amber: 1, red: 2, critical: 3 };
 
+interface MenuView extends MenuOffboardingSignalRow {
+  inactiveSev: Severity;
+  riderSev: Severity;
+  missingSev: Severity;
+  worstSev: Severity;
+}
+
 export default async function OffboardingRiskPage({ searchParams }: PageProps) {
-  const filterIssue = asString(searchParams.firing); // 'inactive' | 'rider' | 'missing' | null
-  const sortKey = asString(searchParams.sort) ?? 'composite'; // 'inactive' | 'rider' | 'missing' | 'composite'
+  const filterIssue = asString(searchParams.firing);
+  const sortKey = asString(searchParams.sort) ?? 'composite';
+  const platformFilter = asString(searchParams.platform); // not yet wired — fixture is all DELIVEROO
 
-  const [signals, partners, compliance, menus, counts] = await Promise.all([
-    getOffboardingSignals(),
-    getPartnerOps(),
-    getCompliance(),
-    getMenuOps(),
-    getTabCounts(),
-  ]);
+  const [signals, counts] = await Promise.all([getMenuOffboardingSignals(), getTabCounts()]);
 
-  const partnersById = new Map(partners.map((p) => [p.partnerId, p]));
-  const complianceByPartner = buildComplianceByPartner(partners, compliance);
-  const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
-
-  const allRows: SiteRow[] = signals
-    .filter((s) => !s.refurbishment) // refurbishment carve-out
+  const enriched: MenuView[] = signals
+    .filter((s) => !s.refurbishment)
+    .filter((s) => (platformFilter ? s.platform === platformFilter : true))
     .map((s) => {
-      const inactive = inactiveSeverity(s.daysSinceLastOrder);
-      const rider = pctSeverity(s.riderWait3m, RIDER_WAIT_BANDS);
-      const missing = pctSeverity(s.missingItems3m, MISSING_ITEMS_BANDS);
-
-      // Compute queue-tier issue for this partner so we can flag it on the row.
-      const partner = partnersById.get(s.partnerId);
-      let queueIssue: IssueCode | null = null;
-      if (partner) {
-        const cRow = complianceByPartner.get(partner.partnerId)?.row;
-        const issues = detectIssues({
-          openRate7d: partner.openRate7d,
-          daysSinceLastOrder: partner.daysSinceLastOrder,
-          missingItemsPct7d: partner.missingItemsPct7d,
-          riderWait5minPct7d: partner.riderWait5minPct7d,
-          rating28d: partner.rating28d,
-          overallCompliant: cRow ? cRow.overallCompliant : null,
-          hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
-          opsStale: partner.opsStale,
-          hostStatus: partner.hostStatus,
-          daysUntilResume: daysUntilResume(partner.pausedUntil),
-          inactiveMenuCount: inactiveMenuCounts.get(partner.partnerId) ?? 0,
-        });
-        queueIssue = selectActiveIssue(issues);
-      }
-
-      return {
-        partnerId: s.partnerId,
-        partnerName: s.partnerName,
-        brandStack: s.brandStack,
-        daysSinceLastOrder: s.daysSinceLastOrder,
-        riderWait3m: s.riderWait3m,
-        missingItems3m: s.missingItems3m,
-        inactiveSeverity: inactive,
-        riderSeverity: rider,
-        missingSeverity: missing,
-        queueIssue,
-      };
+      const inactiveSev = inactiveSeverity(s.daysSinceLastOrder);
+      const riderSev = pctSeverity(s.riderWait3m, RIDER_WAIT_BANDS);
+      const missingSev = pctSeverity(s.missingItems3m, MISSING_ITEMS_BANDS);
+      const worstRank = Math.max(
+        SEVERITY_RANK[inactiveSev],
+        SEVERITY_RANK[riderSev],
+        SEVERITY_RANK[missingSev],
+      );
+      const worstSev = (Object.keys(SEVERITY_RANK) as Severity[]).find(
+        (k) => SEVERITY_RANK[k] === worstRank,
+      )!;
+      return { ...s, inactiveSev, riderSev, missingSev, worstSev };
     });
 
+  // Per-platform summary (top of tab) — counts of menus per severity bucket
+  // grouped by platform. Real schema is overwhelmingly DELIVEROO for offboarding
+  // (rider wait + missing items % only apply there), so this shows DELIVEROO
+  // most of the time. Other platforms appear when a menu has inactive months.
+  const byPlatform = new Map<
+    string,
+    { total: number; critical: number; red: number; amber: number }
+  >();
+  for (const m of enriched) {
+    const p = m.platform ?? 'UNKNOWN';
+    const acc = byPlatform.get(p) ?? { total: 0, critical: 0, red: 0, amber: 0 };
+    acc.total += 1;
+    if (m.worstSev === 'critical') acc.critical += 1;
+    else if (m.worstSev === 'red') acc.red += 1;
+    else if (m.worstSev === 'amber') acc.amber += 1;
+    byPlatform.set(p, acc);
+  }
+
+  // Apply firing-filter (after summary calc, so summary reflects the unfiltered set).
   const filtered = filterIssue
-    ? allRows.filter((r) => {
-        if (filterIssue === 'inactive') return r.inactiveSeverity !== 'green';
-        if (filterIssue === 'rider') return r.riderSeverity !== 'green';
-        if (filterIssue === 'missing') return r.missingSeverity !== 'green';
+    ? enriched.filter((m) => {
+        if (filterIssue === 'inactive') return m.inactiveSev !== 'green';
+        if (filterIssue === 'rider') return m.riderSev !== 'green';
+        if (filterIssue === 'missing') return m.missingSev !== 'green';
         return true;
       })
-    : allRows;
+    : enriched.filter((m) => m.worstSev !== 'green');
 
   const sorted = [...filtered].sort((a, b) => {
-    const key =
-      sortKey === 'inactive'
-        ? 'inactiveSeverity'
-        : sortKey === 'rider'
-          ? 'riderSeverity'
-          : sortKey === 'missing'
-            ? 'missingSeverity'
-            : null;
-    if (key) return SEVERITY_RANK[b[key as keyof SiteRow] as Severity] - SEVERITY_RANK[a[key as keyof SiteRow] as Severity];
-    // composite: max severity across the three columns desc, then rider desc, then missing desc
-    const ma = Math.max(SEVERITY_RANK[a.inactiveSeverity], SEVERITY_RANK[a.riderSeverity], SEVERITY_RANK[a.missingSeverity]);
-    const mb = Math.max(SEVERITY_RANK[b.inactiveSeverity], SEVERITY_RANK[b.riderSeverity], SEVERITY_RANK[b.missingSeverity]);
-    return mb - ma;
+    switch (sortKey) {
+      case 'inactive':
+        return SEVERITY_RANK[b.inactiveSev] - SEVERITY_RANK[a.inactiveSev];
+      case 'missing':
+        return SEVERITY_RANK[b.missingSev] - SEVERITY_RANK[a.missingSev];
+      case 'rider':
+        return SEVERITY_RANK[b.riderSev] - SEVERITY_RANK[a.riderSev];
+      default:
+        return SEVERITY_RANK[b.worstSev] - SEVERITY_RANK[a.worstSev];
+    }
   });
 
-  const columns: ColumnDef<SiteRow>[] = [
+  const columns: ColumnDef<MenuView>[] = [
     {
-      key: 'site',
-      header: 'Site',
-      render: (r) => (
+      key: 'menu',
+      header: 'Menu',
+      render: (m) => (
         <div>
           <div style={{ fontWeight: 600, fontSize: text.base, color: colors.ink }}>
-            {r.partnerName ?? r.partnerId}
+            {m.brandName ?? 'Unknown brand'} · {m.partnerName ?? m.partnerId}
           </div>
           <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
-            {r.brandStack ?? '—'} · {r.partnerId}
+            {m.menuId} · {m.platform ?? '—'}
           </div>
         </div>
       ),
     },
     {
       key: 'inactive',
-      header: (
-        <a href="?sort=inactive" style={sortHeaderStyle(sortKey === 'inactive')}>
-          Inactive (days)
-        </a>
-      ) as unknown as string,
+      header: (<a href="?sort=inactive" style={sortHeaderStyle(sortKey === 'inactive')}>Inactive (days)</a>) as unknown as string,
       align: 'right',
-      width: 160,
-      render: (r) => (
-        <span style={cellStyle(r.inactiveSeverity)}>
-          {r.daysSinceLastOrder === null ? '—' : `${r.daysSinceLastOrder}d`}
-        </span>
+      width: 170,
+      render: (m) => (
+        <div>
+          <span style={cellStyle(m.inactiveSev)}>
+            {m.daysSinceLastOrder === null ? '—' : `${m.daysSinceLastOrder}d`}
+          </span>
+          {m.inactiveMonths > 0 && (
+            <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
+              {m.inactiveMonths}mo in row
+            </div>
+          )}
+        </div>
       ),
     },
     {
       key: 'missing',
-      header: (
-        <a href="?sort=missing" style={sortHeaderStyle(sortKey === 'missing')}>
-          Missing items %
-        </a>
-      ) as unknown as string,
+      header: (<a href="?sort=missing" style={sortHeaderStyle(sortKey === 'missing')}>Missing items %</a>) as unknown as string,
       align: 'right',
-      width: 160,
-      render: (r) => (
-        <span style={cellStyle(r.missingSeverity)}>
-          {r.missingItems3m === null ? '—' : `${(r.missingItems3m * 100).toFixed(2)}%`}
-        </span>
+      width: 170,
+      render: (m) => (
+        <div>
+          <span style={cellStyle(m.missingSev)}>
+            {m.missingItems3m === null ? '—' : `${(m.missingItems3m * 100).toFixed(2)}%`}
+          </span>
+          {m.missingItemsMonthsAboveAmber > 0 && (
+            <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
+              {m.missingItemsMonthsAboveAmber}mo above amber
+            </div>
+          )}
+        </div>
       ),
     },
     {
       key: 'rider',
-      header: (
-        <a href="?sort=rider" style={sortHeaderStyle(sortKey === 'rider')}>
-          Rider wait %
-        </a>
-      ) as unknown as string,
+      header: (<a href="?sort=rider" style={sortHeaderStyle(sortKey === 'rider')}>Rider wait %</a>) as unknown as string,
       align: 'right',
-      width: 160,
-      render: (r) => (
-        <span style={cellStyle(r.riderSeverity)}>
-          {r.riderWait3m === null ? '—' : `${(r.riderWait3m * 100).toFixed(2)}%`}
-        </span>
+      width: 170,
+      render: (m) => (
+        <div>
+          <span style={cellStyle(m.riderSev)}>
+            {m.riderWait3m === null ? '—' : `${(m.riderWait3m * 100).toFixed(2)}%`}
+          </span>
+          {m.riderWaitMonthsAboveAmber > 0 && (
+            <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
+              {m.riderWaitMonthsAboveAmber}mo above amber
+            </div>
+          )}
+        </div>
       ),
     },
     {
-      key: 'queueTier',
-      header: 'In queue (tier)',
-      width: 220,
-      render: (r) =>
-        r.queueIssue ? (
-          <Tag
-            label={`T${ISSUE_CATALOGUE[r.queueIssue].tier ?? '?'} · ${ISSUE_CATALOGUE[r.queueIssue].label}`}
-            tone="info"
-          />
-        ) : (
-          <span style={{ color: colors.ink50, fontSize: text.xs }}>—</span>
-        ),
+      key: 'partner',
+      header: 'Partner',
+      width: 200,
+      render: (m) => (
+        <a
+          href={`/queue?id=${m.partnerId}`}
+          style={{ color: colors.grape, fontSize: text.sm, textDecoration: 'none' }}
+        >
+          Open partner →
+        </a>
+      ),
     },
   ];
 
@@ -257,6 +236,46 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
       filters={<GlobalFilterBar />}
       tabNav={<TabNav current="/offboarding-risk" tabs={applyTabCounts(TABS, counts)} />}
     >
+      {/* Per-platform summary */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))`,
+          gap: space[3],
+          marginBottom: space[4],
+        }}
+      >
+        {Array.from(byPlatform.entries()).map(([platform, c]) => (
+          <div
+            key={platform}
+            style={{
+              border: `1px solid ${colors.border}`,
+              borderRadius: 6,
+              padding: `${space[3]} ${space[4]}`,
+              background: colors.white,
+              fontFamily: fonts.body,
+            }}
+          >
+            <div style={{ fontSize: text.xs, color: colors.ink50, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: space[1] }}>
+              {platform}
+            </div>
+            <div style={{ display: 'flex', gap: space[3], alignItems: 'baseline' }}>
+              <div>
+                <div style={{ fontSize: text.xl, fontWeight: 700, color: colors.ink, fontVariantNumeric: 'tabular-nums' }}>
+                  {c.total}
+                </div>
+                <div style={{ fontSize: 9, color: colors.ink50, textTransform: 'uppercase', letterSpacing: '0.06em' }}>menus</div>
+              </div>
+              {c.critical > 0 && (
+                <span style={{ ...cellStyle('critical') }}>{c.critical}C</span>
+              )}
+              {c.red > 0 && <span style={{ ...cellStyle('red') }}>{c.red}R</span>}
+              {c.amber > 0 && <span style={{ ...cellStyle('amber') }}>{c.amber}A</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -266,19 +285,21 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
           color: colors.ink70,
           fontFamily: fonts.body,
           flexWrap: 'wrap',
+          alignItems: 'center',
         }}
       >
-        <span style={{ alignSelf: 'center' }}>Show only sites failing:</span>
-        <FilterChip label="All" href="/offboarding-risk" active={!filterIssue} />
+        <span>Show menus failing:</span>
+        <FilterChip label="Any" href="/offboarding-risk" active={!filterIssue} />
         <FilterChip label="Inactive" href="/offboarding-risk?firing=inactive" active={filterIssue === 'inactive'} />
         <FilterChip label="Missing items" href="/offboarding-risk?firing=missing" active={filterIssue === 'missing'} />
         <FilterChip label="Rider wait" href="/offboarding-risk?firing=rider" active={filterIssue === 'rider'} />
       </div>
+
       <PartnerTable
         rows={sorted}
         columns={columns}
-        rowHrefForId={(r) => `/queue?id=${r.partnerId}`}
-        emptyState="No Deliveroo sites match the current filter."
+        rowHrefForId={(m) => `/queue?id=${m.partnerId}`}
+        emptyState="No menus match the current filter."
       />
     </Shell>
   );
@@ -315,3 +336,4 @@ function FilterChip({ label, href, active }: { label: string; href: string; acti
     </a>
   );
 }
+

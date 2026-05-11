@@ -12,6 +12,8 @@ import { COMPLIANCE_FIXTURE } from './fixtures/compliance.fixture';
 import { MENU_OPS_FIXTURE } from './fixtures/menuOps.fixture';
 import { SPARKLINES_FIXTURE } from './fixtures/sparklines.fixture';
 import { BRAND_OPS_FIXTURE } from './fixtures/brandOps.fixture';
+import { MENU_OFFBOARDING_SIGNALS_FIXTURE } from './fixtures/menuOffboardingSignals.fixture';
+import { PLATFORM_OPS_FIXTURE } from './fixtures/platformOps.fixture';
 import { fetchPartnerOps as fetchPartnerOpsLive, type PartnerOpsRow } from './queries/granularOps';
 import {
   fetchOffboardingSignals as fetchOffboardingSignalsLive,
@@ -21,6 +23,14 @@ import { fetchCompliance as fetchComplianceLive, type ComplianceRow } from './qu
 import { fetchMenuOps as fetchMenuOpsLive, type MenuOpsRow } from './queries/menuOps';
 import { fetchSparklines as fetchSparklinesLive, type PartnerSparkline } from './queries/sparklines';
 import { fetchBrandOps as fetchBrandOpsLive, type BrandOpsRow } from './queries/brandOps';
+import {
+  fetchMenuOffboardingSignals as fetchMenuOffboardingSignalsLive,
+  type MenuOffboardingSignalRow,
+} from './queries/menuOffboardingSignals';
+import {
+  fetchPlatformOps as fetchPlatformOpsLive,
+  type PartnerPlatformRow,
+} from './queries/platformOps';
 
 export function isLive(): boolean {
   return Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
@@ -54,4 +64,14 @@ export async function getSparklines(): Promise<Map<string, PartnerSparkline>> {
 export async function getBrandOps(): Promise<Map<string, BrandOpsRow[]>> {
   if (isLive()) return fetchBrandOpsLive();
   return BRAND_OPS_FIXTURE;
+}
+
+export async function getMenuOffboardingSignals(): Promise<MenuOffboardingSignalRow[]> {
+  if (isLive()) return fetchMenuOffboardingSignalsLive();
+  return MENU_OFFBOARDING_SIGNALS_FIXTURE;
+}
+
+export async function getPlatformOps(): Promise<Map<string, PartnerPlatformRow[]>> {
+  if (isLive()) return fetchPlatformOpsLive();
+  return PLATFORM_OPS_FIXTURE;
 }

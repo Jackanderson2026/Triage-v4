@@ -105,13 +105,15 @@ export const ISSUE_CATALOGUE: Record<IssueCode, IssueDef> = {
     source: 'sessions_internal',
     sourceRef: 'AM hierarchy May 2026',
   },
-  // ── Tier 4 ──
+  // ── Inactive menus — moved out of the queue hierarchy (May 2026). Surfaced
+  // on the /inactive-menus tab instead. Code kept here so PartnerCard /
+  // MetricChip can still reference it by label.
   inactive_menus: {
     code: 'inactive_menus',
-    tier: 4, kind: 'behaviour',
+    tier: null, kind: 'behaviour',
     label: 'Has inactive menu(s)',
     source: 'sessions_internal',
-    sourceRef: 'menu_ops aggregate — ≥ 1 menu inactive 7d+',
+    sourceRef: 'Surfaced on /inactive-menus, not the queue.',
   },
   // ── Tier 5 ──
   compliance_non_compliant: {

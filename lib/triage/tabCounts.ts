@@ -14,6 +14,7 @@ import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 export interface TabCounts {
   queue: number;
   offboarding: { critical: number; red: number; amber: number };
+  inactiveMenus: number;
   rejectedOrders: number;
 }
 
@@ -61,7 +62,11 @@ export async function getTabCounts(): Promise<TabCounts> {
 
   const rejectedOrders = partners.filter((p) => p.rejectedCount7d > 0).length;
 
-  return { queue, offboarding, rejectedOrders };
+  const inactiveMenusCount = menus.filter(
+    (m) => m.daysSinceLastOrder === null || m.daysSinceLastOrder >= 7,
+  ).length;
+
+  return { queue, offboarding, inactiveMenus: inactiveMenusCount, rejectedOrders };
 }
 
 export function applyTabCounts(
@@ -82,6 +87,8 @@ export function applyTabCounts(
         };
       case '/rejected-orders':
         return { ...t, countLabel: counts.rejectedOrders ? `${counts.rejectedOrders}` : undefined };
+      case '/inactive-menus':
+        return { ...t, countLabel: counts.inactiveMenus ? `${counts.inactiveMenus}` : undefined };
       default:
         return t;
     }

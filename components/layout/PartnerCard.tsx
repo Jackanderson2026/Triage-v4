@@ -21,6 +21,7 @@ import { HOST_STATUS_PAUSED } from '@/lib/triage/enums';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import type { BrandOpsRow } from '@/lib/bq/queries/brandOps';
 import type { PartnerSparkline } from '@/lib/bq/queries/sparklines';
+import type { PartnerPlatformRow } from '@/lib/bq/queries/platformOps';
 import type { PartnerCompliance } from '@/lib/triage/compliance';
 import {
   MISSING_ITEMS_INTERNAL_TARGET,
@@ -68,12 +69,20 @@ export interface PartnerCardProps {
   compliance: PartnerCompliance | null;
   sparkline: PartnerSparkline | undefined;
   brands: BrandOpsRow[];
+  /** Per-platform breakdown shown on expand. Empty array = no platform split rendered. */
+  platforms: PartnerPlatformRow[];
   annotation: AnnotationView | null;
   daysUntilResume: number | null;
+  /** Which GMV figure to surface in the inline header row.
+   * 'gmv7d' (default, queue) | 'avgWeekly4w' (top-partners). */
+  headlineGmv?: 'gmv7d' | 'avgWeekly4w';
 }
 
 export function PartnerCard(props: PartnerCardProps) {
-  const { partner, rank, activeIssue, issues, compliance, sparkline, brands, annotation, daysUntilResume } = props;
+  const {
+    partner, rank, activeIssue, issues, compliance, sparkline, brands, platforms, annotation,
+    daysUntilResume, headlineGmv = 'gmv7d',
+  } = props;
   const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [summary, setSummary] = useState<string[] | null>(null);
@@ -188,7 +197,11 @@ export function PartnerCard(props: PartnerCardProps) {
           {partner.orders7d > 0 && (
             <NumStack label="orders" value={partner.orders7d.toLocaleString('en-GB')} />
           )}
-          {partner.gmv7d > 0 && <NumStack label="7d gmv" value={fmtGbp(partner.gmv7d)} />}
+          {headlineGmv === 'avgWeekly4w'
+            ? partner.avgWeeklyGmv4w > 0 && (
+                <NumStack label="avg /wk · 4w" value={fmtGbp(partner.avgWeeklyGmv4w)} />
+              )
+            : partner.gmv7d > 0 && <NumStack label="7d gmv" value={fmtGbp(partner.gmv7d)} />}
           {sparkline && sparkline.gmv.some((v) => v > 0) && (
             <SparkLine values={sparkline.gmv} color={accentColor} width={80} height={28} />
           )}
@@ -337,6 +350,20 @@ export function PartnerCard(props: PartnerCardProps) {
             )}
           </div>
 
+          {/* Per-platform breakdown */}
+          {platforms.length > 0 && (
+            <section style={{ marginBottom: space[4] }}>
+              <div style={{ fontSize: text.sm, color: colors.ink50, marginBottom: space[2] }}>
+                By platform ({platforms.length})
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))`, gap: space[2] }}>
+                {platforms.map((pl) => (
+                  <PlatformTile key={pl.platform} row={pl} />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Brand sub-rows */}
           {brands.length > 0 && (
             <section style={{ marginBottom: space[4] }}>
@@ -480,6 +507,60 @@ function BrandRow({ brand }: { brand: BrandOpsRow }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Compact per-platform tile rendered in the partner-card expand. One per
+// platform the partner is live on. Bad cell colours mirror the queue thresholds.
+function PlatformTile({ row }: { row: PartnerPlatformRow }) {
+  const ratingBad = row.rating28d !== null && row.rating28d < RATING_TARGET;
+  const openRateBad = row.openRate7d !== null && row.openRate7d < OPEN_RATE_BENCHMARK;
+  const missBad = row.missingItemsPct7d !== null && row.missingItemsPct7d > MISSING_ITEMS_INTERNAL_TARGET;
+  const riderBad = row.riderWait5minPct7d !== null && row.riderWait5minPct7d > RIDER_WAIT_BENCHMARK;
+  return (
+    <div
+      style={{
+        background: colors.bg,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.sm,
+        padding: `${space[2]} ${space[3]}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space[2] }}>
+        <strong style={{ fontSize: text.sm, color: colors.ink, letterSpacing: '0.04em' }}>{row.platform}</strong>
+        <span style={{ fontSize: text.xs, color: colors.ink50 }}>{row.orders7d.toLocaleString('en-GB')} orders 7d</span>
+      </div>
+      <div style={{ display: 'flex', gap: space[1], flexWrap: 'wrap' }}>
+        <MiniCell label="7d GMV" value={fmtGbp(row.gmv7d)} />
+        <MiniCell label="28d GMV" value={fmtGbp(row.gmv28d)} />
+        <MiniCell label="Rating" value={fmtRating(row.rating28d)} bad={ratingBad} />
+        <MiniCell label="Open" value={fmtPct(row.openRate7d)} bad={openRateBad} />
+        <MiniCell label="Miss" value={fmtPct(row.missingItemsPct7d)} bad={missBad} />
+        {row.riderWait5minPct7d !== null && (
+          <MiniCell label="Rider" value={fmtPct(row.riderWait5minPct7d)} bad={riderBad} />
+        )}
+        {row.rejectedCount7d > 0 && (
+          <MiniCell label="Rejected" value={row.rejectedCount7d.toString()} bad />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniCell({ label, value, bad }: { label: string; value: string; bad?: boolean }) {
+  return (
+    <div
+      style={{
+        background: bad ? colors.redSoft : colors.white,
+        border: `1px solid ${bad ? colors.red + '40' : colors.border}`,
+        borderRadius: 4,
+        padding: '4px 6px',
+        minWidth: 70,
+      }}
+    >
+      <div style={{ fontSize: 9, color: colors.ink50, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+      <div style={{ fontSize: text.xs, fontWeight: 700, color: bad ? colors.red : colors.ink, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   );
 }

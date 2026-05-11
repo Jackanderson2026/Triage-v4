@@ -6,6 +6,7 @@ const ALLOWED_TAGS = new Set([
   'tab:queue',
   'tab:top-partners',
   'tab:offboarding',
+  'tab:inactive-menus',
   'tab:rejected-orders',
   'tab:ad-spend',
 ]);

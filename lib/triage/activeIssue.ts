@@ -70,10 +70,7 @@ export function detectIssues(signals: PartnerSignals): IssueCode[] {
     issues.push('inactive_partner');
   }
 
-  // Tier 4 — partner has at least one inactive menu (≥ 7 days)
-  if (signals.inactiveMenuCount > 0) {
-    issues.push('inactive_menus');
-  }
+  // (Inactive menus moved out of the queue May 2026 — surfaced on /inactive-menus.)
 
   // Tier 5 — non-compliant
   if (signals.overallCompliant === false && !signals.hasEmptyComplianceLists) {

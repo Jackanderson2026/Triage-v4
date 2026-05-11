@@ -3,7 +3,9 @@
 // taken verbatim from §7.6 with the test-venue exclusion preserved.
 //
 // Compliance is a MONTHLY snapshot in serve.prod_venues_sessions_score_stg.
-// We always show the latest `score_month` where `month_completed = 'Yes'`.
+// We always show the latest `score_month` where `month_completed = TRUE`.
+// (Brief §5.2 said month_completed = 'Yes' but the live schema has it as
+// BOOLEAN — verified via getMetadata 2026-05-08.)
 
 import { runQuery } from '../client';
 import { cachedQuery, TAB_TAGS, TTL } from '../cache';
@@ -33,8 +35,10 @@ interface RawRow {
   overall_compliant: boolean;
   food_compliant: boolean;
   packaging_compliant: boolean;
-  non_compliant_food_list: string[] | null;
-  non_compliant_packaging_list: string[] | null;
+  // Live schema stores these as JSON-encoded STRING (e.g. '["item1","item2"]'),
+  // not native ARRAY. Parsed in rowToCompliance.
+  non_compliant_food_list: string | null;
+  non_compliant_packaging_list: string | null;
   total_points: number | null;
   open_rate_points: number | null;
   rating_points: number | null;
@@ -63,7 +67,7 @@ WITH latest_compliance AS (
     inaccurate_orders_points,
     total_cashback
   FROM \`sessions-core-data.serve.prod_venues_sessions_score_stg\`
-  WHERE month_completed = 'Yes'
+  WHERE month_completed = TRUE
     AND venue_Id NOT IN UNNEST(@test_venues)
   QUALIFY ROW_NUMBER() OVER (PARTITION BY venue_Id ORDER BY score_month DESC) = 1
 ),
@@ -98,9 +102,19 @@ LEFT JOIN gmv_28d g
   ON g.venue_id = lc.venue_Id
 `;
 
+function parseList(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 function rowToCompliance(r: RawRow): ComplianceRow {
-  const food = r.non_compliant_food_list ?? [];
-  const packaging = r.non_compliant_packaging_list ?? [];
+  const food = parseList(r.non_compliant_food_list);
+  const packaging = parseList(r.non_compliant_packaging_list);
   return {
     venueId: r.venue_id,
     venueName: r.venue_name,

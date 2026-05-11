@@ -62,12 +62,12 @@ describe('hierarchy active-issue selection', () => {
     expect(detectIssues(signals)).not.toContain('inactive_partner');
   });
 
-  it('inactiveMenuCount > 0 fires Tier 4 inactive_menus', () => {
+  it('inactive_menus is NOT surfaced in the queue (moved to /inactive-menus tab May 2026)', () => {
     const signals: PartnerSignals = {
       ...baseline,
-      inactiveMenuCount: 1,
+      inactiveMenuCount: 5,
     };
-    expect(detectIssues(signals)).toContain('inactive_menus');
+    expect(detectIssues(signals)).not.toContain('inactive_menus');
   });
 
   it('clean partner — no issues', () => {

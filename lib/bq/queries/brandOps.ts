@@ -94,7 +94,7 @@ offer AS (
   WHERE order_date BETWEEN DATE_SUB(DATE_TRUNC(CURRENT_DATE('Europe/London'), WEEK(MONDAY)), INTERVAL 8 WEEK)
                        AND CURRENT_DATE('Europe/London')
   GROUP BY pos_code, week_start
-)
+),
 brand_ops_week AS (
   -- Aggregate ops to (partner, brand, week) BEFORE joining ppc/offer, otherwise
   -- the join fan-outs by the number of order_date rows in each week.
@@ -240,15 +240,19 @@ async function fetchBrandOpsRaw(): Promise<Array<[string, BrandOpsRow[]]>> {
   return Array.from(map.entries());
 }
 
-const _fetchBrandOpsCached = cachedQuery(fetchBrandOpsRaw, {
-  tag: TAB_TAGS.queue,
-  ttlSeconds: TTL.slow,
-  extraTags: ['metric:brand-ops'],
-});
-
+// Don't wrap in cachedQuery — the live result with all partners × brands ×
+// 8 weeks exceeds Next's unstable_cache 2 MB limit (real data: ~7.4 MB).
+// Each request runs the BQ query directly (~1-2s); BQ's own query cache
+// covers repeated identical hits within a session.
 export async function fetchBrandOps(): Promise<Map<string, BrandOpsRow[]>> {
-  return new Map(await _fetchBrandOpsCached());
+  const entries = await fetchBrandOpsRaw();
+  return new Map(entries);
 }
+
+// Cache-tag constants kept here so a future Reload button on /queue still
+// invalidates the server-side BQ cache via revalidateTag.
+void TAB_TAGS;
+void TTL;
 
 // Suppress unused warning — kept for future per-week aggregation if we move
 // the 28d rollup off the partner row and onto the brand row.

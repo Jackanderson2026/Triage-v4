@@ -96,20 +96,12 @@ async function fetchSparklinesRaw(): Promise<Map<string, PartnerSparkline>> {
   return bucketsByPartner(rows);
 }
 
-// Cached result is a Map; unstable_cache serialises through JSON, so we wrap to
-// re-hydrate from an array of entries.
-async function fetchSparklinesCachable(): Promise<Array<[string, PartnerSparkline]>> {
-  const map = await fetchSparklinesRaw();
-  return Array.from(map.entries());
-}
-
-const _fetchCached = cachedQuery(fetchSparklinesCachable, {
-  tag: TAB_TAGS.queue,
-  ttlSeconds: TTL.slow,
-  extraTags: ['metric:sparklines'],
-});
-
+// Don't wrap in cachedQuery — the live result with all partners × 8 weeks
+// exceeds Next's unstable_cache 2 MB limit. BQ's own query cache covers
+// repeated identical hits within a session.
 export async function fetchSparklines(): Promise<Map<string, PartnerSparkline>> {
-  const entries = await _fetchCached();
-  return new Map(entries);
+  return fetchSparklinesRaw();
 }
+
+void TAB_TAGS;
+void TTL;

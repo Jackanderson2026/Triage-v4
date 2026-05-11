@@ -66,6 +66,7 @@ export const TABS: TabSpec[] = [
   { href: '/queue', label: 'Triage Queue' },
   { href: '/top-partners', label: 'Top Partners' },
   { href: '/offboarding-risk', label: 'Offboarding Risk' },
+  { href: '/inactive-menus', label: 'Inactive Menus' },
   { href: '/rejected-orders', label: 'Rejected Orders' },
   { href: '/ad-spend', label: 'Ad Spend' },
 ];

@@ -12,6 +12,7 @@ import {
   getCompliance,
   getMenuOps,
   getPartnerOps,
+  getPlatformOps,
   getSparklines,
   isLive,
 } from '@/lib/bq/use';
@@ -50,7 +51,6 @@ const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = 
   { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty', 'data_quality_ops_stale'] },
   { key: 'paused', label: 'Paused', codes: ['paused_overdue', 'paused_in_window'] },
   { key: 'inactive', label: 'Inactive', codes: ['inactive_partner'] },
-  { key: 'inactive-menus', label: 'Inactive Menus', codes: ['inactive_menus'] },
   { key: 'non-compliant', label: 'Non-Compliant', codes: ['compliance_non_compliant'] },
   { key: 'missing-items', label: 'Missing Items', codes: ['missing_items_breach'] },
   { key: 'rating', label: 'Rating', codes: ['rating_below_target'] },
@@ -64,13 +64,14 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const tierFilter = asString(searchParams.tier);
 
-  const [partners, compliance, sparklines, counts, menus, brands] = await Promise.all([
+  const [partners, compliance, sparklines, counts, menus, brands, platforms] = await Promise.all([
     getPartnerOps(),
     getCompliance(),
     getSparklines(),
     getTabCounts(),
     getMenuOps(),
     getBrandOps(),
+    getPlatformOps(),
   ]);
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
@@ -234,6 +235,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
             compliance={v.compliance}
             sparkline={sparklines.get(v.partner.partnerId)}
             brands={brands.get(v.partner.partnerId) ?? []}
+            platforms={platforms.get(v.partner.partnerId) ?? []}
             annotation={v.annotation}
             daysUntilResume={v.daysUntilResume}
           />

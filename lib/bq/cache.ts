@@ -43,6 +43,7 @@ export const TAB_TAGS = {
   queue: 'tab:queue',
   topPartners: 'tab:top-partners',
   offboarding: 'tab:offboarding',
+  inactiveMenus: 'tab:inactive-menus',
   rejectedOrders: 'tab:rejected-orders',
   adSpend: 'tab:ad-spend',
 } as const;

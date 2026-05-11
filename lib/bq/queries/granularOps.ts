@@ -39,6 +39,10 @@ export interface PartnerOpsRow {
   gmv28d: number;
   orders28d: number;
 
+  /** Avg weekly GMV over the prior 4 complete (Mon–Sun) weeks. Excludes the
+   * current partial week — used by /top-partners for ranking + display. */
+  avgWeeklyGmv4w: number;
+
   /** Brief §6 metric 7 — `marketing.ppc_daily_pos_code.advert_cost_to_restaurant`. */
   adSpend7d: number;
   adSpend28d: number;
@@ -86,6 +90,7 @@ interface RawRow {
 
   gmv_28d: number;
   orders_28d: number;
+  avg_weekly_gmv_4w: number | null;
 
   ad_spend_7d: number | null;
   ad_spend_28d: number | null;
@@ -119,7 +124,11 @@ WITH ops AS (
     total_prep_time_mins,
     avg_aod
   FROM \`sessions-core-data.production.delivery_core_ops\`
-  WHERE order_date BETWEEN DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY)
+  -- 35-day window: covers trailing 28d (gmv_28d) AND the 4 complete weeks
+  -- ending last Sunday (avg_weekly_gmv_4w). Latter goes 28 days back from
+  -- the start of the current week, which can be up to 7 days further back
+  -- than the 28d window depending on what day it is.
+  WHERE order_date BETWEEN DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 35 DAY)
                        AND CURRENT_DATE('Europe/London')
 ),
 partner_meta AS (
@@ -231,9 +240,16 @@ partner_window AS (
       SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY), total_order_count, 0))
     )                                                                                                      AS prep_minutes_7d,
     AVG(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY) AND platform_code = 'ROO', avg_aod, NULL)) AS aod_7d,
-    SAFE_DIVIDE(SUM(rating_sum), SUM(rating_count))                                                        AS rating_28d,
-    SUM(total_gmv)                                                                                         AS gmv_28d,
-    SUM(total_order_count)                                                                                 AS orders_28d,
+    SAFE_DIVIDE(
+      SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY), rating_sum, 0)),
+      SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY), rating_count, 0))
+    )                                                                                                      AS rating_28d,
+    SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY), total_gmv, 0))          AS gmv_28d,
+    SUM(IF(order_date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 28 DAY), total_order_count, 0))  AS orders_28d,
+    -- 4 complete Mon-Sun weeks ending last Sunday. Excludes the current week.
+    SUM(IF(order_date >= DATE_SUB(DATE_TRUNC(CURRENT_DATE('Europe/London'), WEEK(MONDAY)), INTERVAL 4 WEEK)
+           AND order_date <  DATE_TRUNC(CURRENT_DATE('Europe/London'), WEEK(MONDAY)),
+           total_gmv, 0)) / 4                                                                              AS avg_weekly_gmv_4w,
     MAX(IF(total_order_count > 0, order_date, NULL))                                                       AS last_order_date,
     MAX(order_date)                                                                                        AS most_recent_ops_date
   FROM ops
@@ -251,6 +267,7 @@ SELECT
   pw.gmv_7d, pw.orders_7d, pw.open_rate_7d, pw.missing_items_pct_7d,
   pw.rider_wait_pct_7d, pw.rejected_rate_7d, pw.rejected_count_7d, pw.prep_minutes_7d, pw.aod_7d, pw.rating_28d,
   pw.gmv_28d, pw.orders_28d,
+  COALESCE(pw.avg_weekly_gmv_4w, 0) AS avg_weekly_gmv_4w,
   COALESCE(adw.ad_spend_7d, 0)         AS ad_spend_7d,
   COALESCE(adw.ad_spend_28d, 0)        AS ad_spend_28d,
   COALESCE(adw.ad_spend_mtd, 0)        AS ad_spend_mtd,
@@ -310,6 +327,7 @@ function rowToPartner(r: RawRow): PartnerOpsRow {
     rating28d: r.rating_28d,
     gmv28d: Number(r.gmv_28d ?? 0),
     orders28d: Number(r.orders_28d ?? 0),
+    avgWeeklyGmv4w: Number(r.avg_weekly_gmv_4w ?? 0),
     adSpend7d: Number(r.ad_spend_7d ?? 0),
     adSpend28d: Number(r.ad_spend_28d ?? 0),
     adSpendMtd: Number(r.ad_spend_mtd ?? 0),

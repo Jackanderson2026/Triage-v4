@@ -1,22 +1,30 @@
 export const dynamic = 'force-dynamic';
 
-import type { CSSProperties } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { SubTabNav, type SubTab } from '@/components/layout/SubTabNav';
+import { PartnerCard } from '@/components/layout/PartnerCard';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getCompliance, getMenuOps, getPartnerOps, isLive } from '@/lib/bq/use';
-import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
-import { detectIssues } from '@/lib/triage/activeIssue';
 import {
-  ISSUE_CATALOGUE,
-  type IssueCode,
-  type Tier,
-} from '@/lib/triage/hierarchy';
-import { buildComplianceByPartner } from '@/lib/triage/compliance';
+  getBrandOps,
+  getCompliance,
+  getMenuOps,
+  getPartnerOps,
+  getPlatformOps,
+  getSparklines,
+  isLive,
+} from '@/lib/bq/use';
+import { listActiveAnnotations } from '@/lib/annotations';
+import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
+import type { IssueCode } from '@/lib/triage/hierarchy';
+import { buildComplianceByPartner, type PartnerCompliance } from '@/lib/triage/compliance';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
+import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
+import type { AnnotationType as TagAnnotationType } from '@/components/primitives/TagModal';
+import type { AnnotationType } from '@/lib/annotations';
 
 const { colors, fonts, radii, space, text } = tokens;
 
@@ -30,27 +38,20 @@ function asString(v: string | string[] | undefined): string | null {
   return null;
 }
 
-function gbp(n: number): string {
-  if (n >= 1000) return `£${(n / 1000).toFixed(1)}k`;
-  return `£${Math.round(n).toLocaleString('en-GB')}`;
-}
-
-// RAG band: T1-T2 = red, T3-T5 = amber, T6-T9 = blue. Issues with tier null skipped.
-function tierColor(tier: Tier | null): { bg: string; fg: string; border: string } {
-  if (tier === null) return { bg: colors.ink05, fg: colors.ink50, border: colors.border };
-  if (tier <= 2) return { bg: colors.redSoft, fg: colors.red, border: colors.red + '40' };
-  if (tier <= 5) return { bg: colors.amberSoft, fg: colors.amber, border: colors.amber + '40' };
-  return { bg: colors.blueSoft, fg: colors.blue, border: colors.blue + '40' };
+function toTagAnn(a: AnnotationType): TagAnnotationType {
+  return a;
 }
 
 interface PartnerView {
   partner: PartnerOpsRow;
   issues: IssueCode[];
+  activeIssue: IssueCode | null;
+  compliance: PartnerCompliance | null;
+  annotation: { type: TagAnnotationType; note: string | null; actor: string } | null;
+  daysUntilResume: number | null;
 }
 
 // Brand-stack sub-tabs. brand_stack stores 3-letter codes (SBB / RUD / SMA / KAR / OTHER).
-// Match is case-insensitive substring on the code, so a partner running 'SBB+RUD'
-// appears under both SoBe and Rudi's.
 const BRAND_SUBTABS: Array<{ key: string; label: string; matches: (stack: string) => boolean }> = [
   { key: 'sbb', label: 'SoBe', matches: (s) => /SBB/i.test(s) },
   { key: 'rud', label: "Rudi's", matches: (s) => /RUD/i.test(s) },
@@ -63,35 +64,50 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const brandTab = asString(searchParams.brand);
 
-  const [partners, compliance, menus] = await Promise.all([
+  const [partners, compliance, menus, sparklines, brands, platforms, counts] = await Promise.all([
     getPartnerOps(),
     getCompliance(),
     getMenuOps(),
+    getSparklines(),
+    getBrandOps(),
+    getPlatformOps(),
+    getTabCounts(),
   ]);
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
   const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
+  const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
 
   const views: PartnerView[] = partners
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
     .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))
     .filter((p) => (hostStatus ? p.hostStatus === hostStatus : true))
     .map((p) => {
-      const cRow = complianceByPartner.get(p.partnerId)?.row ?? null;
+      const pcomp = complianceByPartner.get(p.partnerId) ?? null;
+      const cRow = pcomp?.row ?? null;
+      const dur = daysUntilResume(p.pausedUntil);
+      const issues = detectIssues({
+        openRate7d: p.openRate7d,
+        daysSinceLastOrder: p.daysSinceLastOrder,
+        missingItemsPct7d: p.missingItemsPct7d,
+        riderWait5minPct7d: p.riderWait5minPct7d,
+        rating28d: p.rating28d,
+        overallCompliant: cRow ? cRow.overallCompliant : null,
+        hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
+        opsStale: p.opsStale,
+        hostStatus: p.hostStatus,
+        daysUntilResume: dur,
+        inactiveMenuCount: inactiveMenuCounts.get(p.partnerId) ?? 0,
+      });
+      const ann = annotations.get(p.partnerId) ?? null;
       return {
         partner: p,
-        issues: detectIssues({
-          openRate7d: p.openRate7d,
-          daysSinceLastOrder: p.daysSinceLastOrder,
-          missingItemsPct7d: p.missingItemsPct7d,
-          riderWait5minPct7d: p.riderWait5minPct7d,
-          rating28d: p.rating28d,
-          overallCompliant: cRow ? cRow.overallCompliant : null,
-          hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
-          opsStale: p.opsStale,
-          hostStatus: p.hostStatus,
-          daysUntilResume: daysUntilResume(p.pausedUntil),
-          inactiveMenuCount: inactiveMenuCounts.get(p.partnerId) ?? 0,
-        }),
+        issues,
+        activeIssue: selectActiveIssue(issues),
+        compliance: pcomp,
+        annotation: ann
+          ? { type: toTagAnn(ann.annotationType), note: ann.note, actor: ann.actor }
+          : null,
+        daysUntilResume: dur,
       };
     });
 
@@ -109,16 +125,10 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
     ? views.filter((v) => activeBrand.matches(v.partner.brandStack ?? ''))
     : views;
 
-  // Flat list, ranked by 28d GMV desc. The brand sub-tabs above already
-  // segment by stack — section dividers within a sub-tab were redundant.
-  const ranked = [...brandFilteredViews].sort((a, b) => b.partner.gmv28d - a.partner.gmv28d);
-
-  // Counts for getTabCounts - skip; this tab doesn't have a count badge.
-  const fakeCounts = {
-    queue: 0,
-    offboarding: { critical: 0, red: 0, amber: 0 },
-    rejectedOrders: 0,
-  };
+  // Flat list, ranked by avg weekly GMV over the prior 4 complete weeks desc.
+  const ranked = [...brandFilteredViews].sort(
+    (a, b) => b.partner.avgWeeklyGmv4w - a.partner.avgWeeklyGmv4w,
+  );
 
   // Build the brand sub-tab list with hrefs that preserve global filters.
   const baseParams = new URLSearchParams();
@@ -147,7 +157,7 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
       tabName="Top Partners"
       tabTag={TAB_TAGS.topPartners}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/top-partners" tabs={TABS} />}
+      tabNav={<TabNav current="/top-partners" tabs={applyTabCounts(TABS, counts)} />}
     >
       {!isLive() && (
         <div
@@ -162,126 +172,44 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
             fontFamily: fonts.body,
           }}
         >
-          Portfolio overview — every partner, grouped by brand stack, ranked by 28d GMV. Issue pills are RAG-coloured by hierarchy tier.
+          Portfolio overview — every partner, ranked by average weekly GMV over the prior 4 complete weeks. Click any card to expand for AI summary, compliance, and brand sub-rows.
         </div>
       )}
       <SubTabNav tabs={subTabs} />
       {ranked.length === 0 ? (
-        <div style={emptyState}>
+        <div
+          style={{
+            padding: `${space[12]} ${space[6]}`,
+            textAlign: 'center',
+            color: colors.ink50,
+            background: colors.white,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.lg,
+            fontFamily: fonts.body,
+          }}
+        >
           {activeBrand
             ? `No partners running ${activeBrand.label}. The fixture set may not include this brand yet.`
             : 'No partners match the current filters.'}
         </div>
       ) : (
-        ranked.map((v, i) => <PartnerRow key={v.partner.partnerId} view={v} rank={i + 1} />)
+        ranked.map((v, i) => (
+          <PartnerCard
+            key={v.partner.partnerId}
+            partner={v.partner}
+            rank={i + 1}
+            activeIssue={v.activeIssue}
+            issues={v.issues}
+            compliance={v.compliance}
+            sparkline={sparklines.get(v.partner.partnerId)}
+            brands={brands.get(v.partner.partnerId) ?? []}
+            platforms={platforms.get(v.partner.partnerId) ?? []}
+            annotation={v.annotation}
+            daysUntilResume={v.daysUntilResume}
+            headlineGmv="avgWeekly4w"
+          />
+        ))
       )}
-      {/* avoid unused - keeping for future tabCounts wiring */}
-      <span style={{ display: 'none' }}>{JSON.stringify(fakeCounts)}</span>
     </Shell>
-  );
-}
-
-const emptyState: CSSProperties = {
-  padding: `${space[12]} ${space[6]}`,
-  textAlign: 'center',
-  color: colors.ink50,
-  background: colors.white,
-  border: `1px solid ${colors.border}`,
-  borderRadius: radii.lg,
-  fontFamily: fonts.body,
-};
-
-function PartnerRow({ view, rank }: { view: PartnerView; rank: number }) {
-  const { partner, issues } = view;
-  return (
-    <div
-      style={{
-        background: colors.white,
-        border: `1px solid ${colors.border}`,
-        borderRadius: radii.md,
-        padding: `${space[3]} ${space[4]}`,
-        marginBottom: space[1],
-        display: 'flex',
-        alignItems: 'center',
-        gap: space[3],
-        fontFamily: fonts.body,
-      }}
-    >
-      <div
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: '50%',
-          background: colors.ink05,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 10,
-          fontWeight: 700,
-          color: colors.ink70,
-          flexShrink: 0,
-        }}
-      >
-        {rank}
-      </div>
-      <div style={{ flex: 1 }}>
-        <a
-          href={`/queue?id=${partner.partnerId}`}
-          style={{ fontSize: text.base, fontWeight: 600, color: colors.ink, textDecoration: 'none' }}
-        >
-          {partner.partnerName ?? partner.partnerId}
-        </a>
-        <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
-          {partner.brandStack ?? 'Unassigned'} · {partner.partnerType ?? '—'} · {partner.platforms.join(' / ') || '—'} · {partner.hostStatus ?? '—'}
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: space[1], flexWrap: 'wrap', maxWidth: '50%', justifyContent: 'flex-end' }}>
-        {issues.length === 0 ? (
-          <span
-            style={{
-              fontSize: text.xs,
-              color: colors.green,
-              background: colors.greenSoft,
-              padding: '2px 8px',
-              borderRadius: radii.sm,
-              fontWeight: 600,
-            }}
-          >
-            Clean
-          </span>
-        ) : (
-          issues.map((code) => {
-            const def = ISSUE_CATALOGUE[code];
-            const c = tierColor(def.tier);
-            return (
-              <span
-                key={code}
-                title={def.sourceRef}
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: c.fg,
-                  background: c.bg,
-                  border: `1px solid ${c.border}`,
-                  padding: '2px 6px',
-                  borderRadius: radii.sm,
-                }}
-              >
-                {def.tier !== null ? `T${def.tier} · ` : ''}
-                {def.label}
-              </span>
-            );
-          })
-        )}
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: text.base, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: colors.ink }}>
-          {gbp(partner.gmv28d)}
-        </div>
-        <div style={{ fontSize: 9, color: colors.ink50, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          28d GMV
-        </div>
-      </div>
-    </div>
   );
 }
