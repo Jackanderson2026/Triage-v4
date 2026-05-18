@@ -45,7 +45,6 @@ export async function getTabCounts(): Promise<TabCounts> {
       rating28d: p.rating28d,
       overallCompliant: pcomp ? pcomp.overallCompliant : null,
       hasEmptyComplianceLists: pcomp ? pcomp.hasEmptyLists : false,
-      opsStale: p.opsStale,
       hostStatus: p.hostStatus,
       daysUntilResume: daysUntilResume(p.pausedUntil),
       inactiveMenuCount: inactiveMenuCounts.get(p.partnerId) ?? 0,

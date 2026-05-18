@@ -48,7 +48,7 @@ function toTagAnn(a: AnnotationType): TagAnnotationType {
 // 'clean' bucket is special: partners with no active issue at all.
 const CLEAN_KEY = 'clean';
 const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = [
-  { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty', 'data_quality_ops_stale'] },
+  { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty'] },
   { key: 'paused', label: 'Paused', codes: ['paused_overdue', 'paused_in_window'] },
   { key: 'inactive', label: 'Inactive', codes: ['inactive_partner'] },
   { key: 'non-compliant', label: 'Non-Compliant', codes: ['compliance_non_compliant'] },
@@ -93,7 +93,6 @@ export default async function QueuePage({ searchParams }: PageProps) {
         rating28d: partner.rating28d,
         overallCompliant: cRow ? cRow.overallCompliant : null,
         hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
-        opsStale: partner.opsStale,
         hostStatus: partner.hostStatus,
         daysUntilResume: dur,
         inactiveMenuCount: inactiveMenuCounts.get(partner.partnerId) ?? 0,

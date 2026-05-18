@@ -32,8 +32,6 @@ export interface PartnerSignals {
   overallCompliant: boolean | null;
   /** True when overall_compliant=false but both food & packaging item lists are empty (data-quality flag). */
   hasEmptyComplianceLists: boolean;
-  /** True when delivery_core_ops's most recent row for this partner is > 24h stale. */
-  opsStale: boolean;
   /** HubSpot host status mirrored into BigQuery (e.g. 'paused', 'core_estate'). */
   hostStatus: string | null;
   /** Days until pause window ends. Negative = overdue. Null = no paused_until set or not paused. */
@@ -49,9 +47,7 @@ export function detectIssues(signals: PartnerSignals): IssueCode[] {
   if (signals.overallCompliant === false && signals.hasEmptyComplianceLists) {
     issues.push('data_quality_compliance_empty');
   }
-  if (signals.opsStale) {
-    issues.push('data_quality_ops_stale');
-  }
+  // (data_quality_ops_stale moved out of the queue — see FeedFreshnessIndicator.)
 
   // Tier 2 — paused. All paused partners enter the queue; row sort handles ordering by daysUntilResume.
   if (signals.hostStatus === HOST_STATUS_PAUSED) {

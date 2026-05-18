@@ -93,7 +93,6 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
         rating28d: p.rating28d,
         overallCompliant: cRow ? cRow.overallCompliant : null,
         hasEmptyComplianceLists: cRow ? cRow.hasEmptyLists : false,
-        opsStale: p.opsStale,
         hostStatus: p.hostStatus,
         daysUntilResume: dur,
         inactiveMenuCount: inactiveMenuCounts.get(p.partnerId) ?? 0,

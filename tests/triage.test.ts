@@ -9,7 +9,6 @@ const baseline: PartnerSignals = {
   rating28d: 4.7,
   overallCompliant: true,
   hasEmptyComplianceLists: false,
-  opsStale: false,
   hostStatus: 'Core Estate',
   daysUntilResume: null,
   inactiveMenuCount: 0,

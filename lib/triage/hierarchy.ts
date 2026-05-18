@@ -77,10 +77,13 @@ export const ISSUE_CATALOGUE: Record<IssueCode, IssueDef> = {
   },
   data_quality_ops_stale: {
     code: 'data_quality_ops_stale',
-    tier: 1, kind: 'platform',
-    label: 'Data flag — ops feed stale > 24h',
+    // Moved out of the queue May 2026 — was misfiring because it compared each
+    // partner's last-order date instead of the feed's last-update date. Now the
+    // FeedFreshnessIndicator in the app header carries that signal globally.
+    tier: null, kind: 'platform',
+    label: 'Data flag — ops feed stale',
     source: 'sessions_internal',
-    sourceRef: 'Brief §11 failure modes',
+    sourceRef: 'Replaced by FeedFreshnessIndicator in the Shell header.',
   },
   // ── Tier 2 ──
   paused_overdue: {

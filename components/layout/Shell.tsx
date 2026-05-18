@@ -1,6 +1,7 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { Suspense, type CSSProperties, type ReactNode } from 'react';
 import { tokens } from '@/components/primitives';
 import { ReloadButton } from './ReloadButton';
+import { FeedFreshnessIndicator } from './FeedFreshnessIndicator';
 
 const { colors, fonts, space, text } = tokens;
 
@@ -61,7 +62,12 @@ export function Shell({ tabName, tabTag, filters, tabNav, children }: ShellProps
           <span style={appNameStyle}>Sessions Triage</span>
           <span style={tabNameStyle}>· {tabName}</span>
         </div>
-        <ReloadButton tag={tabTag} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: space[3] }}>
+          <Suspense fallback={null}>
+            <FeedFreshnessIndicator />
+          </Suspense>
+          <ReloadButton tag={tabTag} />
+        </div>
       </header>
       <div
         style={{

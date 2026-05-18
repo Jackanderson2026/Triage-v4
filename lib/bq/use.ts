@@ -14,6 +14,7 @@ import { SPARKLINES_FIXTURE } from './fixtures/sparklines.fixture';
 import { BRAND_OPS_FIXTURE } from './fixtures/brandOps.fixture';
 import { MENU_OFFBOARDING_SIGNALS_FIXTURE } from './fixtures/menuOffboardingSignals.fixture';
 import { PLATFORM_OPS_FIXTURE } from './fixtures/platformOps.fixture';
+import { FEED_FRESHNESS_FIXTURE } from './fixtures/feedFreshness.fixture';
 import { fetchPartnerOps as fetchPartnerOpsLive, type PartnerOpsRow } from './queries/granularOps';
 import {
   fetchOffboardingSignals as fetchOffboardingSignalsLive,
@@ -31,6 +32,10 @@ import {
   fetchPlatformOps as fetchPlatformOpsLive,
   type PartnerPlatformRow,
 } from './queries/platformOps';
+import {
+  fetchFeedFreshness as fetchFeedFreshnessLive,
+  type FeedFreshness,
+} from './queries/feedFreshness';
 
 export function isLive(): boolean {
   return Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
@@ -74,4 +79,16 @@ export async function getMenuOffboardingSignals(): Promise<MenuOffboardingSignal
 export async function getPlatformOps(): Promise<Map<string, PartnerPlatformRow[]>> {
   if (isLive()) return fetchPlatformOpsLive();
   return PLATFORM_OPS_FIXTURE;
+}
+
+export async function getFeedFreshness(): Promise<FeedFreshness> {
+  if (isLive()) {
+    try {
+      return await fetchFeedFreshnessLive();
+    } catch {
+      // BQ unreachable — surface as "unavailable" in the UI so AMs notice.
+      return { maxOrderDate: null, queriedAt: new Date().toISOString() };
+    }
+  }
+  return FEED_FRESHNESS_FIXTURE;
 }
