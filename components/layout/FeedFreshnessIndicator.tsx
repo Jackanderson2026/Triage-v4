@@ -21,16 +21,32 @@ function fmtAge(hours: number): string {
 }
 
 export async function FeedFreshnessIndicator() {
-  const { maxOrderDate, queriedAt } = await getFeedFreshness();
+  const { maxOrderDate, queriedAt, error } = await getFeedFreshness();
 
+  // Three failure shapes, distinguished so the AM knows who to escalate to:
+  //   - error set       → our code / auth / network broke (escalate to dev)
+  //   - error null, maxOrderDate null → BQ table genuinely returned no rows
+  //                                      in the last 7 days (escalate to data team)
+  //   - error null, maxOrderDate set, age within bands → live / stale UI
+  if (error) {
+    return (
+      <Pill
+        dot={colors.red}
+        bg={colors.redSoft}
+        fg={colors.red}
+        label="App error"
+        sub={`Could not reach BigQuery: ${error.slice(0, 200)}`}
+      />
+    );
+  }
   if (!maxOrderDate) {
     return (
       <Pill
         dot={colors.red}
         bg={colors.redSoft}
         fg={colors.red}
-        label="Data unavailable"
-        sub="BigQuery unreachable"
+        label="No data in feed"
+        sub="delivery_core_ops returned no rows in the last 7 days. Ping the data team."
       />
     );
   }

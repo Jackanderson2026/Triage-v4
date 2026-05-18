@@ -85,9 +85,18 @@ export async function getFeedFreshness(): Promise<FeedFreshness> {
   if (isLive()) {
     try {
       return await fetchFeedFreshnessLive();
-    } catch {
-      // BQ unreachable — surface as "unavailable" in the UI so AMs notice.
-      return { maxOrderDate: null, queriedAt: new Date().toISOString() };
+    } catch (e) {
+      // Distinguish "BQ down" from "our code broke". Carry the message into
+      // the indicator + log to Vercel runtime so an AM seeing 'unavailable'
+      // can ping us with the exact error.
+      const message = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error('[feed-freshness] query failed:', message);
+      return {
+        maxOrderDate: null,
+        queriedAt: new Date().toISOString(),
+        error: message,
+      };
     }
   }
   return FEED_FRESHNESS_FIXTURE;

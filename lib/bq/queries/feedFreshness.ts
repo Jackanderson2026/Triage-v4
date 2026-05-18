@@ -13,6 +13,9 @@ export interface FeedFreshness {
   maxOrderDate: string | null;
   /** Wall-clock time the query ran. Lets the UI compute "X hours ago" client-side. */
   queriedAt: string;
+  /** Set when the query itself failed (auth / network / bug). Distinguishes
+   *  'BQ returned no rows' (rare, real data issue) from 'we couldn't even ask'. */
+  error: string | null;
 }
 
 interface RawRow {
@@ -28,6 +31,7 @@ async function fetchFeedFreshnessRaw(): Promise<FeedFreshness> {
   return {
     maxOrderDate: rows[0]?.max_order_date ?? null,
     queriedAt: new Date().toISOString(),
+    error: null,
   };
 }
 
