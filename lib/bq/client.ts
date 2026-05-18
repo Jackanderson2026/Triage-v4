@@ -63,7 +63,7 @@ export async function runQuery<T>(
     // multi-region EU. Hardcoded — no datasets exist outside this region.
     location: 'europe-west2',
   });
-  const [rows] = await job.getQueryResults();
+  const [rawRows] = await job.getQueryResults();
   const meta = job.metadata?.statistics?.query;
   const bytesProcessed = Number(meta?.totalBytesProcessed ?? 0);
 
@@ -77,5 +77,31 @@ export async function runQuery<T>(
     );
   }
 
-  return { rows: rows as T[], bytesProcessed, jobId: job.id };
+  // BQ DATE / TIMESTAMP / DATETIME columns come back as class instances
+  // ({ value: 'YYYY-MM-DD', _type: 'BigQueryDate' }). React's prod server→client
+  // serialisation rejects non-plain objects. Walk the rows and unwrap any
+  // single-property `{ value: string }` shape.
+  const rows = (rawRows as unknown[]).map(bqNormalize) as T[];
+
+  return { rows, bytesProcessed, jobId: job.id };
+}
+
+function bqNormalize(input: unknown): unknown {
+  if (input === null || input === undefined) return input;
+  if (typeof input !== 'object') return input;
+  if (Array.isArray(input)) return input.map(bqNormalize);
+  // Class instances (non-plain prototypes) — unwrap BQ wrappers.
+  const proto = Object.getPrototypeOf(input);
+  if (proto !== null && proto !== Object.prototype) {
+    const obj = input as { value?: unknown };
+    if (typeof obj.value === 'string') return obj.value;
+    if (typeof obj.value === 'number' || typeof obj.value === 'boolean') return obj.value;
+    // Fallback: stringify class instances we don't recognise so they at least cross the boundary.
+    return String(input);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    out[k] = bqNormalize(v);
+  }
+  return out;
 }
