@@ -18,6 +18,10 @@ export interface MenuOpsRow {
   daysSinceLastOrder: number | null;
   scheduledMinutes7d: number | null;
   menuLaunchDate: string | null;
+  /** TRUE if any pos_code under this menu (across platforms) is currently
+   * is_active in restaurants_live_operations_status. FALSE = brand is
+   * switched off everywhere (e.g. discontinued brand like Squid Game). */
+  isActive: boolean;
 }
 
 interface RawRow {
@@ -30,6 +34,7 @@ interface RawRow {
   last_order_date: string | null;
   scheduled_minutes_7d: number | null;
   menu_launch_date: string | null;
+  any_pos_active: boolean | null;
 }
 
 const SQL = `
@@ -80,6 +85,22 @@ sched_7d AS (
   WHERE d5.date >= DATE_SUB(CURRENT_DATE('Europe/London'), INTERVAL 7 DAY)
     AND d5.date <  CURRENT_DATE('Europe/London')
   GROUP BY menu_id
+),
+active_status AS (
+  -- Latest snapshot per pos_code from restaurants_live_operations_status.
+  -- The table holds historical rows; we only want the most recent state.
+  SELECT pos_code, is_active
+  FROM \`sessions-core-data.production.restaurants_live_operations_status\`
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY pos_code ORDER BY update_time DESC) = 1
+),
+menu_active AS (
+  -- Roll up pos_code-level is_active to menu_id grain. A menu is "active"
+  -- if ANY of its pos_codes (across platforms) is currently active.
+  SELECT
+    SUBSTR(pos_code, 1, 10) AS menu_id,
+    LOGICAL_OR(is_active)   AS any_pos_active
+  FROM active_status
+  GROUP BY menu_id
 )
 SELECT
   mo.menu_id,
@@ -90,12 +111,18 @@ SELECT
   mo.platform,
   mo.last_order_date,
   s.scheduled_minutes_7d,
-  mm.menu_launch_date
+  mm.menu_launch_date,
+  COALESCE(ma.any_pos_active, FALSE) AS any_pos_active
 FROM menu_ops mo
-LEFT JOIN menu_meta mm    USING (menu_id)
-LEFT JOIN brand_stack_now bs ON bs.menu_code = mo.menu_id
-LEFT JOIN sched_7d s      USING (menu_id)
-WHERE mm.earliest_churn IS NULL OR mm.earliest_churn > CURRENT_DATE('Europe/London')
+LEFT JOIN menu_meta mm        USING (menu_id)
+LEFT JOIN brand_stack_now bs  ON bs.menu_code = mo.menu_id
+LEFT JOIN sched_7d s          USING (menu_id)
+LEFT JOIN menu_active ma      USING (menu_id)
+WHERE (mm.earliest_churn IS NULL OR mm.earliest_churn > CURRENT_DATE('Europe/London'))
+  -- Exclude menus where every pos_code is inactive (discontinued brand,
+  -- e.g. Squid Game, Yardbirds when wound down). isActive is still surfaced
+  -- on the row so callers can show "hidden N inactive menus" affordance.
+  AND COALESCE(ma.any_pos_active, FALSE) = TRUE
 `;
 
 function rowToMenu(r: RawRow): MenuOpsRow {
@@ -116,6 +143,7 @@ function rowToMenu(r: RawRow): MenuOpsRow {
     daysSinceLastOrder,
     scheduledMinutes7d: r.scheduled_minutes_7d,
     menuLaunchDate: r.menu_launch_date,
+    isActive: Boolean(r.any_pos_active),
   };
 }
 

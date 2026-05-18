@@ -20,6 +20,7 @@ export const MENU_OPS_FIXTURE: MenuOpsRow[] = [
     daysSinceLastOrder: 1,
     scheduledMinutes7d: 4200,
     menuLaunchDate: daysAgo(540),
+    isActive: true,
   },
   {
     menuId: 'P000001SOB',
@@ -33,6 +34,7 @@ export const MENU_OPS_FIXTURE: MenuOpsRow[] = [
     daysSinceLastOrder: 11,
     scheduledMinutes7d: 4200,
     menuLaunchDate: daysAgo(360),
+    isActive: true,
   },
   {
     menuId: 'P000003SOB',
@@ -46,6 +48,7 @@ export const MENU_OPS_FIXTURE: MenuOpsRow[] = [
     daysSinceLastOrder: 1,
     scheduledMinutes7d: 4100,
     menuLaunchDate: daysAgo(48),
+    isActive: true,
   },
   {
     menuId: 'P000003SOJ',
@@ -59,5 +62,6 @@ export const MENU_OPS_FIXTURE: MenuOpsRow[] = [
     daysSinceLastOrder: 20,
     scheduledMinutes7d: null, // JE has no scheduled-minutes source
     menuLaunchDate: daysAgo(35),
+    isActive: true,
   },
 ];
