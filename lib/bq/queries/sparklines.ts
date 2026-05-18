@@ -9,7 +9,7 @@
 // weeks render as gaps (the SparkLine component drops nulls).
 
 import { runQuery } from '../client';
-import { cachedQuery, TAB_TAGS, TTL } from '../cache';
+import { TAB_TAGS, TTL } from '../cache';
 import { partnerIdSql, platformCodeSql } from '../keys';
 
 export interface PartnerSparkline {

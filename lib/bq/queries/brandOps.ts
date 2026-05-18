@@ -7,7 +7,7 @@
 // rollups inline so the brand row sparkline doesn't require a second query.
 
 import { runQuery } from '../client';
-import { cachedQuery, TAB_TAGS, TTL } from '../cache';
+import { TAB_TAGS, TTL } from '../cache';
 import { partnerIdSql, platformCodeSql } from '../keys';
 
 export interface BrandWeek {
