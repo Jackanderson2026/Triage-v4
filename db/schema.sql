@@ -33,3 +33,43 @@ ALTER TABLE annotations
 ALTER TABLE annotations
   ADD CONSTRAINT annotations_partner_id_length_check
   CHECK (char_length(partner_id) = 7);
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Ops-exec assignment model (May 2026). Drives the in-scope / out-of-scope /
+-- actioned split on the triage tabs. Configured via the /admin tab.
+-- ──────────────────────────────────────────────────────────────────────────
+
+-- One row per ops exec. email matches the Google SSO session email.
+CREATE TABLE IF NOT EXISTS ops_execs (
+  id         BIGSERIAL PRIMARY KEY,
+  name       TEXT        NOT NULL,
+  email      TEXT        NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Allocation rules: a partner is assigned to an exec if it matches every
+-- non-null field on any of that exec's rules (AND within a rule; OR across
+-- rules). NULL = wildcard ("any partner type" / "any brand").
+CREATE TABLE IF NOT EXISTS allocation_rules (
+  id           BIGSERIAL PRIMARY KEY,
+  ops_exec_id  BIGINT      NOT NULL REFERENCES ops_execs(id) ON DELETE CASCADE,
+  partner_type TEXT,                 -- e.g. 'QSR' / 'Delivery' / NULL = any
+  brand_stack  TEXT,                 -- e.g. 'SBB' / 'RUD' / NULL = any
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- A rule with both fields null would assign everything; allow it but make it
+  -- explicit (an exec who owns the whole estate).
+  CHECK (partner_type IS NOT NULL OR brand_stack IS NOT NULL OR TRUE)
+);
+
+CREATE INDEX IF NOT EXISTS allocation_rules_exec_idx ON allocation_rules (ops_exec_id);
+
+-- Per-exec, per-tab cap on how many partners are "in scope" for the week.
+-- tab is the route key, e.g. 'queue'. One row per (exec, tab).
+CREATE TABLE IF NOT EXISTS scope_limits (
+  id           BIGSERIAL PRIMARY KEY,
+  ops_exec_id  BIGINT      NOT NULL REFERENCES ops_execs(id) ON DELETE CASCADE,
+  tab          TEXT        NOT NULL,
+  max_partners INTEGER     NOT NULL CHECK (max_partners >= 0),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (ops_exec_id, tab)
+);

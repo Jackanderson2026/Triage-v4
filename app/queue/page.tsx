@@ -22,6 +22,9 @@ import { compareIssueSeverity, type IssueCode } from '@/lib/triage/hierarchy';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
+import { computeScope, isThisWeek } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 import type { AnnotationType as TagAnnotationType } from '@/components/primitives/TagModal';
 import type { AnnotationType } from '@/lib/annotations';
 
@@ -64,15 +67,19 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const tierFilter = asString(searchParams.tier);
 
-  const [partners, compliance, sparklines, counts, menus, brands, platforms] = await Promise.all([
-    getPartnerOps(),
-    getCompliance(),
-    getSparklines(),
-    getTabCounts(),
-    getMenuOps(),
-    getBrandOps(),
-    getPlatformOps(),
-  ]);
+  const [partners, compliance, sparklines, counts, menus, brands, platforms, execConfig, session] =
+    await Promise.all([
+      getPartnerOps(),
+      getCompliance(),
+      getSparklines(),
+      getTabCounts(),
+      getMenuOps(),
+      getBrandOps(),
+      getPlatformOps(),
+      listOpsExecConfig(),
+      auth(),
+    ]);
+  const sessionEmail = session?.user?.email ?? null;
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
   const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
@@ -103,7 +110,9 @@ export default async function QueuePage({ searchParams }: PageProps) {
         issues,
         activeIssue: selectActiveIssue(issues),
         compliance: pcomp,
-        annotation: ann ? { type: toTagAnn(ann.annotationType), note: ann.note, actor: ann.actor } : null,
+        annotation: ann
+          ? { type: toTagAnn(ann.annotationType), note: ann.note, actor: ann.actor, createdAt: ann.createdAt }
+          : null,
         daysUntilResume: dur,
       };
     })
@@ -177,6 +186,51 @@ export default async function QueuePage({ searchParams }: PageProps) {
     { key: CLEAN_KEY, label: 'Clean', href: tierHref(CLEAN_KEY), count: cleanCount, active: tierFilter === CLEAN_KEY },
   ];
 
+  // Split the visible (tier-filtered) views into actioned / in-scope / out-of-scope
+  // for the logged-in ops exec. Unregistered email → unscoped (all in-scope).
+  const scope = computeScope({
+    email: sessionEmail,
+    tab: 'queue',
+    config: execConfig,
+    views: visibleViews,
+    getPartner: (v) => ({
+      partnerId: v.partner.partnerId,
+      partnerType: v.partner.partnerType,
+      brandStack: v.partner.brandStack,
+    }),
+    isActionedThisWeek: (v) => isThisWeek(v.annotation?.createdAt),
+  });
+
+  type QView = (typeof visibleViews)[number];
+  const renderCard = (v: QView, rank: number) => (
+    <PartnerCard
+      key={v.partner.partnerId}
+      partner={v.partner}
+      rank={rank}
+      activeIssue={v.activeIssue}
+      issues={v.issues}
+      compliance={v.compliance}
+      sparkline={sparklines.get(v.partner.partnerId)}
+      brands={brands.get(v.partner.partnerId) ?? []}
+      platforms={platforms.get(v.partner.partnerId) ?? []}
+      annotation={v.annotation}
+      daysUntilResume={v.daysUntilResume}
+    />
+  );
+
+  const sectionHeading = (titleText: string, count: number, sub?: string) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: space[3], margin: `${space[5]} 0 ${space[3]}` }}>
+      <span style={{ fontFamily: fonts.display, fontSize: text.lg, fontWeight: 700, color: colors.ink }}>
+        {titleText}
+      </span>
+      <span style={{ fontSize: text.xs, color: colors.ink50, fontWeight: 600 }}>{count}</span>
+      {sub && <span style={{ fontSize: text.xs, color: colors.ink50 }}>{sub}</span>}
+    </div>
+  );
+
+  const everythingEmpty =
+    scope.inScope.length === 0 && scope.outOfScope.length === 0 && scope.actioned.length === 0;
+
   return (
     <Shell
       tabName="Triage Queue"
@@ -203,7 +257,15 @@ export default async function QueuePage({ searchParams }: PageProps) {
         </div>
       )}
       <SubTabNav tabs={subTabs} />
-      {visibleViews.length === 0 ? (
+
+      {scope.scopedExec && (
+        <div style={{ fontSize: text.xs, color: colors.ink50, fontFamily: fonts.body, marginBottom: space[2] }}>
+          Scoped to <strong style={{ color: colors.ink70 }}>{scope.scopedExec.name}</strong> · in-scope sites
+          assigned by the allocation rules in Admin.
+        </div>
+      )}
+
+      {everythingEmpty ? (
         <div
           style={{
             padding: `${space[12]} ${space[6]}`,
@@ -224,21 +286,38 @@ export default async function QueuePage({ searchParams }: PageProps) {
                 : 'No partners with active issues. Check back after the next data refresh.'}
         </div>
       ) : (
-        visibleViews.map((v, i) => (
-          <PartnerCard
-            key={v.partner.partnerId}
-            partner={v.partner}
-            rank={i + 1}
-            activeIssue={v.activeIssue}
-            issues={v.issues}
-            compliance={v.compliance}
-            sparkline={sparklines.get(v.partner.partnerId)}
-            brands={brands.get(v.partner.partnerId) ?? []}
-            platforms={platforms.get(v.partner.partnerId) ?? []}
-            annotation={v.annotation}
-            daysUntilResume={v.daysUntilResume}
-          />
-        ))
+        <>
+          {/* In scope for the week */}
+          {sectionHeading('In scope for the week', scope.inScope.length)}
+          {scope.inScope.length === 0 ? (
+            <div style={{ fontSize: text.sm, color: colors.ink50, fontFamily: fonts.body, marginBottom: space[3] }}>
+              Nothing in scope — either you&apos;re under your limit with no assigned issues, or your
+              allocation rules don&apos;t match any firing partners.
+            </div>
+          ) : (
+            scope.inScope.map((v, i) => renderCard(v, i + 1))
+          )}
+
+          {/* Out of scope — greyed but still actionable */}
+          {scope.outOfScope.length > 0 && (
+            <>
+              {sectionHeading('Out of scope for the week', scope.outOfScope.length, 'over limit / assigned elsewhere / unassigned — still actionable')}
+              <div style={{ opacity: 0.55 }}>
+                {scope.outOfScope.map((v, i) => renderCard(v, i + 1))}
+              </div>
+            </>
+          )}
+
+          {/* Actioned this week */}
+          {scope.actioned.length > 0 && (
+            <>
+              {sectionHeading('Actioned this week', scope.actioned.length)}
+              <div style={{ opacity: 0.7 }}>
+                {scope.actioned.map((v, i) => renderCard(v, i + 1))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </Shell>
   );
