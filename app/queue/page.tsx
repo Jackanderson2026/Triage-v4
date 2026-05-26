@@ -10,12 +10,14 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import {
   getBrandOps,
   getCompliance,
+  getMenuOffboardingSignals,
   getMenuOps,
   getPartnerOps,
   getPlatformOps,
   getSparklines,
   isLive,
 } from '@/lib/bq/use';
+import { INACTIVE_BANDS_DAYS, MISSING_ITEMS_BANDS, RIDER_WAIT_BANDS } from '@/lib/triage/thresholds';
 import { listActiveAnnotations } from '@/lib/annotations';
 import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
 import { compareIssueSeverity, type IssueCode } from '@/lib/triage/hierarchy';
@@ -67,7 +69,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const tierFilter = asString(searchParams.tier);
 
-  const [partners, compliance, sparklines, counts, menus, brands, platforms, execConfig, session] =
+  const [partners, compliance, sparklines, counts, menus, brands, platforms, offboarding, execConfig, session] =
     await Promise.all([
       getPartnerOps(),
       getCompliance(),
@@ -76,11 +78,24 @@ export default async function QueuePage({ searchParams }: PageProps) {
       getMenuOps(),
       getBrandOps(),
       getPlatformOps(),
+      getMenuOffboardingSignals(),
       listOpsExecConfig(),
       auth(),
     ]);
   const sessionEmail = session?.user?.email ?? null;
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
+
+  // Partners with at least one menu firing an offboarding trigger (amber+).
+  // Used to badge queue tiles "also in Offboarding Risk" so the partner isn't
+  // double-actioned across tabs.
+  const offboardingPartnerIds = new Set<string>();
+  for (const s of offboarding) {
+    if (s.refurbishment) continue;
+    const inactiveHit = s.daysSinceLastOrder !== null && s.daysSinceLastOrder >= INACTIVE_BANDS_DAYS.amber;
+    const riderHit = s.riderWait3m !== null && s.riderWait3m >= RIDER_WAIT_BANDS.amber;
+    const missingHit = s.missingItems3m !== null && s.missingItems3m >= MISSING_ITEMS_BANDS.amber;
+    if (inactiveHit || riderHit || missingHit) offboardingPartnerIds.add(s.partnerId);
+  }
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
   const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
 
@@ -215,6 +230,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
       platforms={platforms.get(v.partner.partnerId) ?? []}
       annotation={v.annotation}
       daysUntilResume={v.daysUntilResume}
+      alsoIn={offboardingPartnerIds.has(v.partner.partnerId) ? ['Offboarding Risk'] : []}
     />
   );
 

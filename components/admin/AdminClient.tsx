@@ -6,12 +6,18 @@ import { tokens } from '@/components/primitives';
 import { PARTNER_TYPES, BRAND_STACKS, BRAND_STACK_LABELS } from '@/lib/triage/enums';
 import {
   addAllocationRule,
+  addPartnerAssignment,
   createOpsExec,
   deleteOpsExec,
   removeAllocationRule,
   setScopeLimit,
   type OpsExecConfig,
 } from '@/lib/admin/opsExecs';
+
+export interface PartnerOption {
+  id: string;
+  name: string;
+}
 
 const { colors, fonts, radii, space, text } = tokens;
 
@@ -66,7 +72,13 @@ const linkBtn: CSSProperties = {
   padding: 0,
 };
 
-export function AdminClient({ config }: { config: OpsExecConfig[] }) {
+export function AdminClient({
+  config,
+  partnerOptions,
+}: {
+  config: OpsExecConfig[];
+  partnerOptions: PartnerOption[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [name, setName] = useState('');
@@ -132,8 +144,15 @@ export function AdminClient({ config }: { config: OpsExecConfig[] }) {
       )}
 
       {config.map((c) => (
-        <ExecCard key={c.exec.id} config={c} pending={pending} run={run} />
+        <ExecCard key={c.exec.id} config={c} pending={pending} run={run} partnerOptions={partnerOptions} />
       ))}
+
+      {/* Shared datalist for the partner pickers (one per page, referenced by id). */}
+      <datalist id="partner-options">
+        {partnerOptions.map((p) => (
+          <option key={p.id} value={`${p.name} — ${p.id}`} />
+        ))}
+      </datalist>
     </div>
   );
 }
@@ -142,14 +161,35 @@ function ExecCard({
   config,
   pending,
   run,
+  partnerOptions,
 }: {
   config: OpsExecConfig;
   pending: boolean;
   run: (fn: () => Promise<void>) => void;
+  partnerOptions: PartnerOption[];
 }) {
   const { exec, rules, limits } = config;
   const [ruleType, setRuleType] = useState('');
   const [ruleBrand, setRuleBrand] = useState('');
+  const [partnerPick, setPartnerPick] = useState('');
+
+  // Resolve the "Name — 1234567" datalist value back to a 7-char partner id.
+  function resolvePartnerId(value: string): string | null {
+    const v = value.trim();
+    const dashMatch = v.match(/—\s*([A-Za-z0-9]{7})\s*$/);
+    if (dashMatch) return dashMatch[1]!;
+    if (/^[A-Za-z0-9]{7}$/.test(v)) return v; // raw id typed
+    const byName = partnerOptions.find((p) => p.name.toLowerCase() === v.toLowerCase());
+    return byName?.id ?? null;
+  }
+
+  const ruleLabel = (r: { partnerType: string | null; brandStack: string | null; partnerId: string | null }): string => {
+    if (r.partnerId) {
+      const name = partnerOptions.find((p) => p.id === r.partnerId)?.name;
+      return name ? `Partner: ${name}` : `Partner: ${r.partnerId}`;
+    }
+    return `${r.partnerType ?? 'Any type'} · ${r.brandStack ? (BRAND_STACK_LABELS[r.brandStack] ?? r.brandStack) : 'Any brand'}`;
+  };
 
   return (
     <div style={card}>
@@ -176,13 +216,14 @@ function ExecCard({
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: space[2], fontSize: text.sm }}>
                 <span
                   style={{
-                    background: colors.ink05,
+                    background: r.partnerId ? colors.grapeSoft : colors.ink05,
                     borderRadius: radii.sm,
                     padding: `2px 8px`,
-                    color: colors.ink,
+                    color: r.partnerId ? colors.grape : colors.ink,
+                    fontWeight: r.partnerId ? 600 : 400,
                   }}
                 >
-                  {r.partnerType ?? 'Any type'} · {r.brandStack ? (BRAND_STACK_LABELS[r.brandStack] ?? r.brandStack) : 'Any brand'}
+                  {ruleLabel(r)}
                 </span>
                 <button style={linkBtn} disabled={pending} onClick={() => run(() => removeAllocationRule(r.id))}>
                   remove
@@ -220,6 +261,36 @@ function ExecCard({
             }
           >
             Add rule
+          </button>
+        </div>
+
+        {/* Specific-partner assignment */}
+        <div style={{ display: 'flex', gap: space[2], alignItems: 'center', flexWrap: 'wrap', marginTop: space[2] }}>
+          <input
+            list="partner-options"
+            style={{ ...input, minWidth: 280 }}
+            placeholder="Assign a specific partner (type to search)…"
+            value={partnerPick}
+            onChange={(e) => setPartnerPick(e.target.value)}
+          />
+          <button
+            style={btn}
+            disabled={pending || !partnerPick}
+            onClick={() => {
+              const pid = resolvePartnerId(partnerPick);
+              if (!pid) {
+                run(async () => {
+                  throw new Error(`Couldn't resolve "${partnerPick}" to a partner. Pick from the list.`);
+                });
+                return;
+              }
+              run(async () => {
+                await addPartnerAssignment(exec.id, pid);
+                setPartnerPick('');
+              });
+            }}
+          >
+            Add partner
           </button>
         </div>
       </div>

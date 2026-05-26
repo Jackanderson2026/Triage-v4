@@ -55,11 +55,15 @@ CREATE TABLE IF NOT EXISTS allocation_rules (
   ops_exec_id  BIGINT      NOT NULL REFERENCES ops_execs(id) ON DELETE CASCADE,
   partner_type TEXT,                 -- e.g. 'QSR' / 'Delivery' / NULL = any
   brand_stack  TEXT,                 -- e.g. 'SBB' / 'RUD' / NULL = any
+  partner_id   TEXT,                 -- LEFT(pos_code,7) — pins one specific partner; overrides type/brand
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- A rule with both fields null would assign everything; allow it but make it
   -- explicit (an exec who owns the whole estate).
   CHECK (partner_type IS NOT NULL OR brand_stack IS NOT NULL OR TRUE)
 );
+
+-- Added May 2026 — specific-partner assignment. Idempotent for existing DBs.
+ALTER TABLE allocation_rules ADD COLUMN IF NOT EXISTS partner_id TEXT;
 
 CREATE INDEX IF NOT EXISTS allocation_rules_exec_idx ON allocation_rules (ops_exec_id);
 

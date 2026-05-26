@@ -76,12 +76,15 @@ export interface PartnerCardProps {
   /** Which GMV figure to surface in the inline header row.
    * 'gmv7d' (default, queue) | 'avgWeekly4w' (top-partners). */
   headlineGmv?: 'gmv7d' | 'avgWeekly4w';
+  /** Other tabs this partner also appears in — shown as "also in" badges so
+   * AMs don't double-action. e.g. ['Offboarding Risk']. */
+  alsoIn?: string[];
 }
 
 export function PartnerCard(props: PartnerCardProps) {
   const {
     partner, rank, activeIssue, issues, compliance, sparkline, brands, platforms, annotation,
-    daysUntilResume, headlineGmv = 'gmv7d',
+    daysUntilResume, headlineGmv = 'gmv7d', alsoIn = [],
   } = props;
   const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
@@ -178,6 +181,26 @@ export function PartnerCard(props: PartnerCardProps) {
             {partner.hostStatus === HOST_STATUS_PAUSED && daysUntilResume !== null && daysUntilResume < 0 && (
               <Tag label={`${Math.abs(daysUntilResume)}d overdue`} tone="warning" />
             )}
+            {alsoIn.map((tab) => (
+              <span
+                key={tab}
+                title={`Also surfaced in ${tab} — coordinate so this partner isn't actioned twice.`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: colors.blueSoft,
+                  color: colors.blue,
+                  border: `1px solid ${colors.blue}30`,
+                  borderRadius: radii.sm,
+                  padding: '1px 8px',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              >
+                ↗ also in {tab}
+              </span>
+            ))}
           </div>
           <div style={{ fontSize: text.xs, color: colors.ink50, marginTop: 2 }}>
             {partner.partnerType ?? '—'}

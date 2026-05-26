@@ -6,10 +6,13 @@ import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getMenuOps, isLive } from '@/lib/bq/use';
+import { getMenuOps, getPartnerOps, isLive } from '@/lib/bq/use';
 import type { MenuOpsRow } from '@/lib/bq/queries/menuOps';
 import { INACTIVE_MENU_THRESHOLD_DAYS } from '@/lib/triage/thresholds';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { buildAssignedPartnerIds } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 
 const { colors, fonts, space, text } = tokens;
 
@@ -27,9 +30,21 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
   const platformFilter = asString(searchParams.platform);
   const daysFilter = Number(asString(searchParams.days)) || INACTIVE_MENU_THRESHOLD_DAYS;
 
-  const [menus, counts] = await Promise.all([getMenuOps(), getTabCounts()]);
+  const [menus, counts, partners, execConfig, session] = await Promise.all([
+    getMenuOps(),
+    getTabCounts(),
+    getPartnerOps(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
+  const assignedIds = buildAssignedPartnerIds(
+    partners.map((p) => ({ partnerId: p.partnerId, partnerType: p.partnerType, brandStack: p.brandStack })),
+    execConfig,
+    session?.user?.email ?? null,
+  );
 
   const flagged = menus
+    .filter((m) => (assignedIds ? assignedIds.has(m.partnerId) : true))
     .filter((m) => (platformFilter ? m.platform === platformFilter : true))
     .filter((m) => {
       // Skip newly-launched menus (< 7 days since launch) so launches don't trigger.

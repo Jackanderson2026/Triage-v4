@@ -21,6 +21,8 @@ export interface AllocationRule {
   opsExecId: number;
   partnerType: string | null;
   brandStack: string | null;
+  /** If set, the rule pins one specific partner (LEFT(pos_code,7)), ignoring type/brand. */
+  partnerId: string | null;
 }
 
 export interface ScopeLimit {
@@ -36,20 +38,26 @@ export interface OpsExecConfig {
 }
 
 interface ExecRow { id: number; name: string; email: string }
-interface RuleRow { id: number; ops_exec_id: number; partner_type: string | null; brand_stack: string | null }
+interface RuleRow { id: number; ops_exec_id: number; partner_type: string | null; brand_stack: string | null; partner_id: string | null }
 interface LimitRow { ops_exec_id: number; tab: string; max_partners: number }
 
 export async function listOpsExecConfig(): Promise<OpsExecConfig[]> {
   const [execs, rules, limits] = await Promise.all([
     sql`SELECT id, name, email FROM ops_execs ORDER BY name` as unknown as Promise<ExecRow[]>,
-    sql`SELECT id, ops_exec_id, partner_type, brand_stack FROM allocation_rules ORDER BY id` as unknown as Promise<RuleRow[]>,
+    sql`SELECT id, ops_exec_id, partner_type, brand_stack, partner_id FROM allocation_rules ORDER BY id` as unknown as Promise<RuleRow[]>,
     sql`SELECT ops_exec_id, tab, max_partners FROM scope_limits` as unknown as Promise<LimitRow[]>,
   ]);
   return execs.map((e) => ({
     exec: { id: e.id, name: e.name, email: e.email.toLowerCase() },
     rules: rules
       .filter((r) => r.ops_exec_id === e.id)
-      .map((r) => ({ id: r.id, opsExecId: r.ops_exec_id, partnerType: r.partner_type, brandStack: r.brand_stack })),
+      .map((r) => ({
+        id: r.id,
+        opsExecId: r.ops_exec_id,
+        partnerType: r.partner_type,
+        brandStack: r.brand_stack,
+        partnerId: r.partner_id,
+      })),
     limits: limits
       .filter((l) => l.ops_exec_id === e.id)
       .map((l) => ({ opsExecId: l.ops_exec_id, tab: l.tab, maxPartners: l.max_partners })),
@@ -82,6 +90,16 @@ export async function addAllocationRule(
   await sql`
     INSERT INTO allocation_rules (ops_exec_id, partner_type, brand_stack)
     VALUES (${opsExecId}, ${partnerType || null}, ${brandStack || null})
+  `;
+  revalidatePath('/admin');
+}
+
+export async function addPartnerAssignment(opsExecId: number, partnerId: string): Promise<void> {
+  const pid = partnerId.trim().slice(0, 7);
+  if (pid.length !== 7) throw new Error(`partnerId must be 7 chars; got "${partnerId}"`);
+  await sql`
+    INSERT INTO allocation_rules (ops_exec_id, partner_id)
+    VALUES (${opsExecId}, ${pid})
   `;
   revalidatePath('/admin');
 }

@@ -21,6 +21,9 @@ import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
 import type { IssueCode } from '@/lib/triage/hierarchy';
 import { buildComplianceByPartner, type PartnerCompliance } from '@/lib/triage/compliance';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
+import { buildAssignedPartnerIds } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import type { AnnotationType as TagAnnotationType } from '@/components/primitives/TagModal';
@@ -64,20 +67,31 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const brandTab = asString(searchParams.brand);
 
-  const [partners, compliance, menus, sparklines, brands, platforms, counts] = await Promise.all([
-    getPartnerOps(),
-    getCompliance(),
-    getMenuOps(),
-    getSparklines(),
-    getBrandOps(),
-    getPlatformOps(),
-    getTabCounts(),
-  ]);
+  const [partners, compliance, menus, sparklines, brands, platforms, counts, execConfig, session] =
+    await Promise.all([
+      getPartnerOps(),
+      getCompliance(),
+      getMenuOps(),
+      getSparklines(),
+      getBrandOps(),
+      getPlatformOps(),
+      getTabCounts(),
+      listOpsExecConfig(),
+      auth(),
+    ]);
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
   const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
 
+  // Scope to the logged-in exec's assigned partners (null = unscoped → show all).
+  const assignedIds = buildAssignedPartnerIds(
+    partners.map((p) => ({ partnerId: p.partnerId, partnerType: p.partnerType, brandStack: p.brandStack })),
+    execConfig,
+    session?.user?.email ?? null,
+  );
+
   const views: PartnerView[] = partners
+    .filter((p) => (assignedIds ? assignedIds.has(p.partnerId) : true))
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
     .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))
     .filter((p) => (hostStatus ? p.hostStatus === hostStatus : true))

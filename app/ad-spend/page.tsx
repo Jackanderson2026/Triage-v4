@@ -9,6 +9,9 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { buildAssignedPartnerIds } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 
 const { colors, fonts, space, text } = tokens;
 
@@ -35,9 +38,20 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
   const brandStack = asString(searchParams.brandStack);
   const hostStatus = asString(searchParams.hostStatus);
 
-  const [partners, counts] = await Promise.all([getPartnerOps(), getTabCounts()]);
+  const [partners, counts, execConfig, session] = await Promise.all([
+    getPartnerOps(),
+    getTabCounts(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
+  const assignedIds = buildAssignedPartnerIds(
+    partners.map((p) => ({ partnerId: p.partnerId, partnerType: p.partnerType, brandStack: p.brandStack })),
+    execConfig,
+    session?.user?.email ?? null,
+  );
 
   const filtered = partners
+    .filter((p) => (assignedIds ? assignedIds.has(p.partnerId) : true))
     .filter((p) => p.adSpend28d > 0)
     .filter((p) => (partnerType ? p.partnerType === partnerType : true))
     .filter((p) => (brandStack ? p.brandStack?.toLowerCase().includes(brandStack.toLowerCase()) : true))

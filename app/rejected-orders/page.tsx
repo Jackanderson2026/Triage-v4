@@ -9,6 +9,9 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
 import { buildRejectedOrders, type RejectedOrderRow } from '@/lib/triage/rejectedOrders';
+import { buildAssignedPartnerIds } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 
 const { colors, fonts, space, text } = tokens;
 
@@ -17,8 +20,19 @@ function pct(n: number): string {
 }
 
 export default async function RejectedOrdersPage() {
-  const [partners, counts] = await Promise.all([getPartnerOps(), getTabCounts()]);
-  const rows = buildRejectedOrders(partners);
+  const [partners, counts, execConfig, session] = await Promise.all([
+    getPartnerOps(),
+    getTabCounts(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
+  const assignedIds = buildAssignedPartnerIds(
+    partners.map((p) => ({ partnerId: p.partnerId, partnerType: p.partnerType, brandStack: p.brandStack })),
+    execConfig,
+    session?.user?.email ?? null,
+  );
+  const scopedPartners = assignedIds ? partners.filter((p) => assignedIds.has(p.partnerId)) : partners;
+  const rows = buildRejectedOrders(scopedPartners);
 
   const columns: ColumnDef<RejectedOrderRow>[] = [
     {

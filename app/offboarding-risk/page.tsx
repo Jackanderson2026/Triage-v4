@@ -7,9 +7,12 @@ import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
-import { getMenuOffboardingSignals } from '@/lib/bq/use';
+import { getMenuOffboardingSignals, getPartnerOps } from '@/lib/bq/use';
 import type { MenuOffboardingSignalRow } from '@/lib/bq/queries/menuOffboardingSignals';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { buildAssignedPartnerIds } from '@/lib/triage/scope';
+import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { auth } from '@/auth';
 import {
   INACTIVE_BANDS_DAYS,
   MISSING_ITEMS_BANDS,
@@ -84,9 +87,21 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
   const sortKey = asString(searchParams.sort) ?? 'composite';
   const platformFilter = asString(searchParams.platform); // not yet wired — fixture is all DELIVEROO
 
-  const [signals, counts] = await Promise.all([getMenuOffboardingSignals(), getTabCounts()]);
+  const [signals, counts, partners, execConfig, session] = await Promise.all([
+    getMenuOffboardingSignals(),
+    getTabCounts(),
+    getPartnerOps(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
+  const assignedIds = buildAssignedPartnerIds(
+    partners.map((p) => ({ partnerId: p.partnerId, partnerType: p.partnerType, brandStack: p.brandStack })),
+    execConfig,
+    session?.user?.email ?? null,
+  );
 
   const enriched: MenuView[] = signals
+    .filter((s) => (assignedIds ? assignedIds.has(s.partnerId) : true))
     .filter((s) => !s.refurbishment)
     .filter((s) => (platformFilter ? s.platform === platformFilter : true))
     .map((s) => {

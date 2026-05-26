@@ -6,12 +6,21 @@ import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getTabCounts, applyTabCounts } from '@/lib/triage/tabCounts';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
+import { getPartnerOps } from '@/lib/bq/use';
 import { AdminClient } from '@/components/admin/AdminClient';
 
 const { colors, fonts, space, text } = tokens;
 
 export default async function AdminPage() {
-  const [config, counts] = await Promise.all([listOpsExecConfig(), getTabCounts()]);
+  const [config, counts, partners] = await Promise.all([
+    listOpsExecConfig(),
+    getTabCounts(),
+    getPartnerOps(),
+  ]);
+  // Lightweight picker list — id + name only, deduped, sorted by name.
+  const partnerOptions = partners
+    .map((p) => ({ id: p.partnerId, name: p.partnerName ?? p.partnerId }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <Shell
@@ -26,7 +35,7 @@ export default async function AdminPage() {
       tabNav={<TabNav current="/admin" tabs={applyTabCounts(TABS, counts)} />}
     >
       <div style={{ marginBottom: space[4] }} />
-      <AdminClient config={config} />
+      <AdminClient config={config} partnerOptions={partnerOptions} />
     </Shell>
   );
 }

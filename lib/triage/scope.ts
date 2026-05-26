@@ -43,12 +43,34 @@ export function isThisWeek(iso: string | null | undefined, now = new Date()): bo
 
 function partnerMatchesExec(p: ScopeablePartner, cfg: OpsExecConfig): boolean {
   return cfg.rules.some((rule) => {
+    // Specific-partner rule pins one partner, ignoring type/brand.
+    if (rule.partnerId != null) return rule.partnerId === p.partnerId;
     const typeOk = rule.partnerType == null || rule.partnerType === p.partnerType;
     const brandOk =
       rule.brandStack == null ||
       (p.brandStack ?? '').toLowerCase().includes(rule.brandStack.toLowerCase());
     return typeOk && brandOk;
   });
+}
+
+/**
+ * Set of partner IDs assigned to the logged-in exec, for filtering the
+ * report-style tabs (Top Partners, Ad Spend, Rejected Orders, Inactive Menus,
+ * Offboarding Risk). Returns null when the email isn't a registered exec —
+ * caller should treat null as "show everything" (unscoped).
+ */
+export function buildAssignedPartnerIds(
+  partners: ScopeablePartner[],
+  config: OpsExecConfig[],
+  email: string | null | undefined,
+): Set<string> | null {
+  const cfg = config.find((c) => c.exec.email === (email ?? '').toLowerCase());
+  if (!cfg) return null;
+  const ids = new Set<string>();
+  for (const p of partners) {
+    if (partnerMatchesExec(p, cfg)) ids.add(p.partnerId);
+  }
+  return ids;
 }
 
 export function computeScope<T>(opts: {
