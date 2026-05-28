@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
+import { Pager, paginate } from '@/components/layout/Pager';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
@@ -73,6 +74,9 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
           return b.adSpend28d - a.adSpend28d;
       }
     });
+
+  const pageRaw = asString(searchParams.page);
+  const paged = paginate(filtered, pageRaw ?? undefined);
 
   const columns: ColumnDef<PartnerOpsRow & { ratio: number }>[] = [
     {
@@ -195,10 +199,24 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
         </div>
       )}
       <PartnerTable
-        rows={filtered}
+        rows={paged.slice}
         columns={columns}
         rowHrefForId={(p) => `/queue?id=${p.partnerId}`}
         emptyState="No partners with ad spend in the last 28 days."
+      />
+      <Pager
+        page={paged.page}
+        pageSize={paged.pageSize}
+        total={paged.total}
+        hrefFor={(p) => {
+          const params = new URLSearchParams();
+          params.set('sort', sortKey);
+          if (partnerType) params.set('partnerType', partnerType);
+          if (brandStack) params.set('brandStack', brandStack);
+          if (hostStatus) params.set('hostStatus', hostStatus);
+          params.set('page', String(p));
+          return `/ad-spend?${params.toString()}`;
+        }}
       />
     </Shell>
   );

@@ -314,14 +314,38 @@ export default async function QueuePage({ searchParams }: PageProps) {
             scope.inScope.map((v, i) => renderCard(v, i + 1))
           )}
 
-          {/* Out of scope — greyed but still actionable */}
+          {/* Out of scope — collapsed by default to keep the page snappy.
+              <details> is the native disclosure widget — no JS, no state. */}
           {scope.outOfScope.length > 0 && (
-            <>
-              {sectionHeading('Out of scope for the week', scope.outOfScope.length, 'over limit / assigned elsewhere / unassigned — still actionable')}
-              <div style={{ opacity: 0.55 }}>
+            <details style={{ marginTop: space[5] }}>
+              <summary
+                style={{
+                  cursor: 'pointer',
+                  listStyle: 'none',
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: space[3],
+                  padding: `${space[2]} 0`,
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{ fontFamily: fonts.display, fontSize: text.lg, fontWeight: 700, color: colors.ink }}>
+                  Out of scope for the week
+                </span>
+                <span style={{ fontSize: text.xs, color: colors.ink50, fontWeight: 600 }}>
+                  {scope.outOfScope.length}
+                </span>
+                <span style={{ fontSize: text.xs, color: colors.grape, fontWeight: 600 }}>
+                  click to show ▾
+                </span>
+                <span style={{ fontSize: text.xs, color: colors.ink50 }}>
+                  over limit / assigned elsewhere / unassigned — still actionable
+                </span>
+              </summary>
+              <div style={{ opacity: 0.55, marginTop: space[3] }}>
                 {scope.outOfScope.map((v, i) => renderCard(v, i + 1))}
               </div>
-            </>
+            </details>
           )}
 
           {/* Actioned this week */}

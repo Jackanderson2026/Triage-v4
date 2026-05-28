@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
+import { Pager, paginate } from '@/components/layout/Pager';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getMenuOps, getPartnerOps, isLive } from '@/lib/bq/use';
@@ -62,6 +63,8 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
       if (b.daysSinceLastOrder === null) return 1;
       return b.daysSinceLastOrder - a.daysSinceLastOrder;
     });
+
+  const paged = paginate(flagged, asString(searchParams.page) ?? undefined);
 
   const columns: ColumnDef<MenuOpsRow>[] = [
     {
@@ -146,10 +149,22 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
         </div>
       )}
       <PartnerTable
-        rows={flagged}
+        rows={paged.slice}
         columns={columns}
         rowHrefForId={(m) => `/queue?id=${m.partnerId}`}
         emptyState={`No menus inactive for ${daysFilter}+ days.`}
+      />
+      <Pager
+        page={paged.page}
+        pageSize={paged.pageSize}
+        total={paged.total}
+        hrefFor={(p) => {
+          const params = new URLSearchParams();
+          if (platformFilter) params.set('platform', platformFilter);
+          if (daysFilter !== INACTIVE_MENU_THRESHOLD_DAYS) params.set('days', String(daysFilter));
+          params.set('page', String(p));
+          return `/inactive-menus?${params.toString()}`;
+        }}
       />
     </Shell>
   );

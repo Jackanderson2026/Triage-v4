@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
+import { Pager, paginate } from '@/components/layout/Pager';
 import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
@@ -19,7 +20,17 @@ function pct(n: number): string {
   return `${(n * 100).toFixed(2)}%`;
 }
 
-export default async function RejectedOrdersPage() {
+interface PageProps {
+  searchParams: { [k: string]: string | string[] | undefined };
+}
+
+function asString(v: string | string[] | undefined): string | null {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v[0] ?? null;
+  return null;
+}
+
+export default async function RejectedOrdersPage({ searchParams }: PageProps) {
   const [partners, counts, execConfig, session] = await Promise.all([
     getPartnerOps(),
     getTabCounts(),
@@ -33,6 +44,7 @@ export default async function RejectedOrdersPage() {
   );
   const scopedPartners = assignedIds ? partners.filter((p) => assignedIds.has(p.partnerId)) : partners;
   const rows = buildRejectedOrders(scopedPartners);
+  const paged = paginate(rows, asString(searchParams.page) ?? undefined);
 
   const columns: ColumnDef<RejectedOrderRow>[] = [
     {
@@ -121,10 +133,16 @@ export default async function RejectedOrdersPage() {
         </div>
       )}
       <PartnerTable
-        rows={rows}
+        rows={paged.slice}
         columns={columns}
         rowHrefForId={(r) => `/queue?id=${r.partnerId}`}
         emptyState="No sites with rejected orders in the last 7 days."
+      />
+      <Pager
+        page={paged.page}
+        pageSize={paged.pageSize}
+        total={paged.total}
+        hrefFor={(p) => `/rejected-orders?page=${p}`}
       />
     </Shell>
   );

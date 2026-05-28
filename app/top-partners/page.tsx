@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { SubTabNav, type SubTab } from '@/components/layout/SubTabNav';
+import { Pager, paginate } from '@/components/layout/Pager';
 import { PartnerCard } from '@/components/layout/PartnerCard';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
@@ -143,6 +144,9 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
     (a, b) => b.partner.avgWeeklyGmv4w - a.partner.avgWeeklyGmv4w,
   );
 
+  const pageRaw = asString(searchParams.page);
+  const paged = paginate(ranked, pageRaw ?? undefined);
+
   // Build the brand sub-tab list with hrefs that preserve global filters.
   const baseParams = new URLSearchParams();
   if (partnerType) baseParams.set('partnerType', partnerType);
@@ -206,22 +210,35 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
             : 'No partners match the current filters.'}
         </div>
       ) : (
-        ranked.map((v, i) => (
-          <PartnerCard
-            key={v.partner.partnerId}
-            partner={v.partner}
-            rank={i + 1}
-            activeIssue={v.activeIssue}
-            issues={v.issues}
-            compliance={v.compliance}
-            sparkline={sparklines.get(v.partner.partnerId)}
-            brands={brands.get(v.partner.partnerId) ?? []}
-            platforms={platforms.get(v.partner.partnerId) ?? []}
-            annotation={v.annotation}
-            daysUntilResume={v.daysUntilResume}
-            headlineGmv="avgWeekly4w"
+        <>
+          {paged.slice.map((v, i) => (
+            <PartnerCard
+              key={v.partner.partnerId}
+              partner={v.partner}
+              rank={(paged.page - 1) * paged.pageSize + i + 1}
+              activeIssue={v.activeIssue}
+              issues={v.issues}
+              compliance={v.compliance}
+              sparkline={sparklines.get(v.partner.partnerId)}
+              brands={brands.get(v.partner.partnerId) ?? []}
+              platforms={platforms.get(v.partner.partnerId) ?? []}
+              annotation={v.annotation}
+              daysUntilResume={v.daysUntilResume}
+              headlineGmv="avgWeekly4w"
+            />
+          ))}
+          <Pager
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            hrefFor={(p) => {
+              const params = new URLSearchParams(baseParams.toString());
+              if (brandTab) params.set('brand', brandTab);
+              params.set('page', String(p));
+              return `/top-partners?${params.toString()}`;
+            }}
           />
-        ))
+        </>
       )}
     </Shell>
   );

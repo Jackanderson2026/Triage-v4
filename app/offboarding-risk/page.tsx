@@ -5,6 +5,7 @@ import { Shell } from '@/components/layout/Shell';
 import { TabNav, TABS } from '@/components/layout/TabNav';
 import { GlobalFilterBar } from '@/components/layout/GlobalFilterBar';
 import { PartnerTable, type ColumnDef } from '@/components/tables/PartnerTable';
+import { Pager, paginate } from '@/components/layout/Pager';
 import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getMenuOffboardingSignals, getPartnerOps } from '@/lib/bq/use';
@@ -160,6 +161,8 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
     }
   });
 
+  const paged = paginate(sorted, asString(searchParams.page) ?? undefined);
+
   const columns: ColumnDef<MenuView>[] = [
     {
       key: 'menu',
@@ -311,10 +314,23 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
       </div>
 
       <PartnerTable
-        rows={sorted}
+        rows={paged.slice}
         columns={columns}
         rowHrefForId={(m) => `/queue?id=${m.partnerId}`}
         emptyState="No menus match the current filter."
+      />
+      <Pager
+        page={paged.page}
+        pageSize={paged.pageSize}
+        total={paged.total}
+        hrefFor={(p) => {
+          const params = new URLSearchParams();
+          if (filterIssue) params.set('firing', filterIssue);
+          if (sortKey !== 'composite') params.set('sort', sortKey);
+          if (platformFilter) params.set('platform', platformFilter);
+          params.set('page', String(p));
+          return `/offboarding-risk?${params.toString()}`;
+        }}
       />
     </Shell>
   );
