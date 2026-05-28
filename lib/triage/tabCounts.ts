@@ -4,25 +4,54 @@
 // fetchers from each page is cheap because every fetcher is wrapped in
 // unstable_cache; subsequent tabs hit the same cache entry.
 
-import { getCompliance, getMenuOps, getOffboardingSignals, getPartnerOps } from '@/lib/bq/use';
+import { getCompliance, getMenuOffboardingSignals, getMenuOps, getPartnerOps } from '@/lib/bq/use';
 import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
 import { listActiveAnnotations } from '@/lib/annotations';
-import { scoreSite } from '@/lib/offboarding-risk/scoring';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
+import {
+  INACTIVE_BANDS_DAYS,
+  MISSING_ITEMS_BANDS,
+  RIDER_WAIT_BANDS,
+} from '@/lib/triage/thresholds';
 
 export interface TabCounts {
   queue: number;
-  offboarding: { critical: number; red: number; amber: number };
+  /** Per-severity menu counts AND the unique partner count affected. */
+  offboarding: {
+    critical: number;
+    red: number;
+    amber: number;
+    /** Unique partners with at least one menu in any non-green band. */
+    partnersAffected: number;
+  };
   inactiveMenus: number;
   rejectedOrders: number;
+}
+
+type Severity = 'green' | 'amber' | 'red' | 'critical';
+const RANK: Record<Severity, number> = { green: 0, amber: 1, red: 2, critical: 3 };
+
+function inactiveSev(days: number | null): Severity {
+  if (days === null) return 'green';
+  if (days >= INACTIVE_BANDS_DAYS.critical) return 'critical';
+  if (days >= INACTIVE_BANDS_DAYS.red) return 'red';
+  if (days >= INACTIVE_BANDS_DAYS.amber) return 'amber';
+  return 'green';
+}
+function pctSev(v: number | null, bands: { critical: number; red: number; amber: number }): Severity {
+  if (v === null) return 'green';
+  if (v >= bands.critical) return 'critical';
+  if (v >= bands.red) return 'red';
+  if (v >= bands.amber) return 'amber';
+  return 'green';
 }
 
 export async function getTabCounts(): Promise<TabCounts> {
   const [partners, menus, signals, compliance] = await Promise.all([
     getPartnerOps(),
     getMenuOps(),
-    getOffboardingSignals(),
+    getMenuOffboardingSignals(),
     getCompliance(),
   ]);
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
@@ -52,11 +81,25 @@ export async function getTabCounts(): Promise<TabCounts> {
     if (selectActiveIssue(issues)) queue += 1;
   }
 
-  const risks = signals.map(scoreSite);
+  // Menu-grain offboarding counts (matches what the /offboarding-risk tab
+  // renders) PLUS the unique partner count affected so the badge can show both.
+  const offboardingMenuBands = { critical: 0, red: 0, amber: 0 };
+  const affectedPartners = new Set<string>();
+  for (const s of signals) {
+    if (s.refurbishment) continue;
+    const worst = Math.max(
+      RANK[inactiveSev(s.daysSinceLastOrder)],
+      RANK[pctSev(s.riderWait3m, RIDER_WAIT_BANDS)],
+      RANK[pctSev(s.missingItems3m, MISSING_ITEMS_BANDS)],
+    );
+    if (worst === RANK.critical) offboardingMenuBands.critical += 1;
+    else if (worst === RANK.red) offboardingMenuBands.red += 1;
+    else if (worst === RANK.amber) offboardingMenuBands.amber += 1;
+    if (worst > RANK.green) affectedPartners.add(s.partnerId);
+  }
   const offboarding = {
-    critical: risks.filter((r) => r.band === 'critical').length,
-    red: risks.filter((r) => r.band === 'red').length,
-    amber: risks.filter((r) => r.band === 'amber').length,
+    ...offboardingMenuBands,
+    partnersAffected: affectedPartners.size,
   };
 
   const rejectedOrders = partners.filter((p) => p.rejectedCount7d > 0).length;
@@ -76,14 +119,19 @@ export function applyTabCounts(
     switch (t.href) {
       case '/queue':
         return { ...t, countLabel: counts.queue ? `${counts.queue} firing` : undefined };
-      case '/offboarding-risk':
+      case '/offboarding-risk': {
+        const o = counts.offboarding;
+        const anyFiring = o.critical || o.red || o.amber;
         return {
           ...t,
-          countLabel:
-            counts.offboarding.critical || counts.offboarding.red || counts.offboarding.amber
-              ? `${counts.offboarding.critical}C · ${counts.offboarding.red}R · ${counts.offboarding.amber}A`
-              : undefined,
+          // Format: "12C · 4R · 2A menus · 9 partners"
+          // C/R/A are menus by severity band (matches what the tab renders).
+          // Partner count is unique partners with ≥1 menu in any non-green band.
+          countLabel: anyFiring
+            ? `${o.critical}C · ${o.red}R · ${o.amber}A menus · ${o.partnersAffected} partners`
+            : undefined,
         };
+      }
       case '/rejected-orders':
         return { ...t, countLabel: counts.rejectedOrders ? `${counts.rejectedOrders}` : undefined };
       case '/inactive-menus':
