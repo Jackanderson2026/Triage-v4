@@ -7,11 +7,16 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import { getTabCounts, applyTabCounts } from '@/lib/triage/tabCounts';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { getPartnerOps } from '@/lib/bq/use';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { AdminClient } from '@/components/admin/AdminClient';
 
 const { colors, fonts, space, text } = tokens;
 
-export default async function AdminPage() {
+interface PageProps {
+  searchParams: { [k: string]: string | string[] | undefined };
+}
+
+export default async function AdminPage({ searchParams }: PageProps) {
   const [config, counts, partners] = await Promise.all([
     listOpsExecConfig(),
     getTabCounts(),
@@ -32,7 +37,7 @@ export default async function AdminPage() {
           against the signed-in Google account email.
         </div>
       }
-      tabNav={<TabNav current="/admin" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/admin" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       <div style={{ marginBottom: space[4] }} />
       <AdminClient config={config} partnerOptions={partnerOptions} />

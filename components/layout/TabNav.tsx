@@ -13,6 +13,9 @@ export interface TabSpec {
 interface TabNavProps {
   current: string;
   tabs: TabSpec[];
+  /** Global filter params to carry forward to the destination tab.
+   * Page-local params (page, sort, tier, etc.) are intentionally dropped. */
+  globalParams?: URLSearchParams;
 }
 
 const navStyle: CSSProperties = {
@@ -46,13 +49,15 @@ const countStyle: CSSProperties = {
   fontWeight: 500,
 };
 
-export function TabNav({ current, tabs }: TabNavProps) {
+export function TabNav({ current, tabs, globalParams }: TabNavProps) {
+  const qs = globalParams?.toString() ?? '';
   return (
     <nav style={navStyle}>
       {tabs.map((tab) => {
         const isActive = tab.href === current;
+        const href = qs ? `${tab.href}?${qs}` : tab.href;
         return (
-          <Link key={tab.href} href={tab.href} style={isActive ? activeStyle : linkBase}>
+          <Link key={tab.href} href={href} style={isActive ? activeStyle : linkBase}>
             <span>{tab.label}</span>
             {tab.countLabel && <span style={countStyle}>· {tab.countLabel}</span>}
           </Link>
@@ -65,7 +70,7 @@ export function TabNav({ current, tabs }: TabNavProps) {
 export const TABS: TabSpec[] = [
   { href: '/queue', label: 'Triage Queue' },
   { href: '/top-partners', label: 'Top Partners' },
-  { href: '/offboarding-risk', label: 'Offboarding Risk' },
+  { href: '/offboarding-risk', label: 'Roo Offboarding Risk' },
   { href: '/inactive-menus', label: 'Inactive Menus' },
   { href: '/rejected-orders', label: 'Rejected Orders' },
   { href: '/ad-spend', label: 'Ad Spend' },

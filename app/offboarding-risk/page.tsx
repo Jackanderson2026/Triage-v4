@@ -11,6 +11,7 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import { getMenuOffboardingSignals, getPartnerOps } from '@/lib/bq/use';
 import type { MenuOffboardingSignalRow } from '@/lib/bq/queries/menuOffboardingSignals';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { buildAssignedPartnerIds } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { auth } from '@/auth';
@@ -249,10 +250,10 @@ export default async function OffboardingRiskPage({ searchParams }: PageProps) {
 
   return (
     <Shell
-      tabName="Offboarding Risk"
+      tabName="Roo Offboarding Risk"
       tabTag={TAB_TAGS.offboarding}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/offboarding-risk" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/offboarding-risk" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       {/* Per-platform summary */}
       <div

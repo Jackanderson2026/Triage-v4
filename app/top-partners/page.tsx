@@ -26,6 +26,7 @@ import { buildAssignedPartnerIds } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { auth } from '@/auth';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import type { AnnotationType as TagAnnotationType } from '@/components/primitives/TagModal';
 import type { AnnotationType } from '@/lib/annotations';
@@ -174,7 +175,7 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
       tabName="Top Partners"
       tabTag={TAB_TAGS.topPartners}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/top-partners" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/top-partners" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       {!isLive() && (
         <div

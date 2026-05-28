@@ -121,15 +121,12 @@ export function applyTabCounts(
         return { ...t, countLabel: counts.queue ? `${counts.queue} firing` : undefined };
       case '/offboarding-risk': {
         const o = counts.offboarding;
-        const anyFiring = o.critical || o.red || o.amber;
+        const totalMenus = o.critical + o.red + o.amber;
         return {
           ...t,
-          // Format: "12C · 4R · 2A menus · 9 partners"
-          // C/R/A are menus by severity band (matches what the tab renders).
-          // Partner count is unique partners with ≥1 menu in any non-green band.
-          countLabel: anyFiring
-            ? `${o.critical}C · ${o.red}R · ${o.amber}A menus · ${o.partnersAffected} partners`
-            : undefined,
+          // Simplified — drops the C/R/A breakdown (was confusing). The
+          // tab's per-platform summary cards already show the severity split.
+          countLabel: totalMenus > 0 ? `${o.partnersAffected} partners · ${totalMenus} menus` : undefined,
         };
       }
       case '/rejected-orders':

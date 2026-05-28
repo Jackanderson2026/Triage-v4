@@ -9,6 +9,7 @@ import { Tag, tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { buildRejectedOrders, type RejectedOrderRow } from '@/lib/triage/rejectedOrders';
 import { buildAssignedPartnerIds } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
@@ -114,7 +115,7 @@ export default async function RejectedOrdersPage({ searchParams }: PageProps) {
       tabName="Rejected Orders"
       tabTag={TAB_TAGS.rejectedOrders}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/rejected-orders" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/rejected-orders" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       {!isLive() && (
         <div

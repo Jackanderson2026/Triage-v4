@@ -10,6 +10,7 @@ import { TAB_TAGS } from '@/lib/bq/cache';
 import { getPartnerOps, isLive } from '@/lib/bq/use';
 import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { buildAssignedPartnerIds } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { auth } from '@/auth';
@@ -180,7 +181,7 @@ export default async function AdSpendPage({ searchParams }: PageProps) {
       tabName="Ad Spend"
       tabTag={TAB_TAGS.adSpend}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/ad-spend" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/ad-spend" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       {!isLive() && (
         <div

@@ -11,6 +11,7 @@ import { getMenuOps, getPartnerOps, isLive } from '@/lib/bq/use';
 import type { MenuOpsRow } from '@/lib/bq/queries/menuOps';
 import { INACTIVE_MENU_THRESHOLD_DAYS } from '@/lib/triage/thresholds';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { buildAssignedPartnerIds } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { auth } from '@/auth';
@@ -57,6 +58,10 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
     .filter((m) =>
       m.daysSinceLastOrder === null ? true : m.daysSinceLastOrder >= daysFilter,
     )
+    // Only menus that have actually been scheduled to be open — > 1 minute in
+    // the last 7d. Zero/null = the partner never asked the platform to open
+    // this menu, so "no orders" is intent, not failure.
+    .filter((m) => (m.scheduledMinutes7d ?? 0) > 1)
     .sort((a, b) => {
       if (a.daysSinceLastOrder === null && b.daysSinceLastOrder === null) return 0;
       if (a.daysSinceLastOrder === null) return -1;
@@ -130,8 +135,26 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
       tabName="Inactive Menus"
       tabTag={TAB_TAGS.inactiveMenus}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/inactive-menus" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/inactive-menus" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
+      {/* Explainer banner — sits above the table so AMs know the filter rule. */}
+      <div
+        style={{
+          background: colors.blueSoft,
+          border: `1px solid ${colors.blue}30`,
+          borderRadius: 6,
+          padding: `${space[3]} ${space[4]}`,
+          marginBottom: space[4],
+          color: colors.blue,
+          fontSize: text.sm,
+          fontFamily: fonts.body,
+        }}
+      >
+        Showing menus that have been <strong>scheduled to be open</strong> (&gt; 1 minute in the last 7
+        days) <strong>but haven&apos;t taken an order</strong> in {INACTIVE_MENU_THRESHOLD_DAYS}+ days.
+        Menus with zero scheduled hours are excluded — they&apos;re intentionally switched off. Deliveroo
+        only (other platforms don&apos;t surface scheduled hours).
+      </div>
       {!isLive() && (
         <div
           style={{
@@ -145,7 +168,7 @@ export default async function InactiveMenusPage({ searchParams }: PageProps) {
             fontFamily: fonts.body,
           }}
         >
-          Showing fixture data. Scheduled-minutes column is Deliveroo-only — non-ROO menus render &ldquo;—&rdquo;.
+          Showing fixture data.
         </div>
       )}
       <PartnerTable

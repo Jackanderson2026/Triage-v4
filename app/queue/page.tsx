@@ -23,6 +23,7 @@ import { detectIssues, selectActiveIssue } from '@/lib/triage/activeIssue';
 import { compareIssueSeverity, type IssueCode } from '@/lib/triage/hierarchy';
 import { buildComplianceByPartner } from '@/lib/triage/compliance';
 import { applyTabCounts, getTabCounts } from '@/lib/triage/tabCounts';
+import { extractGlobalParams } from '@/lib/triage/globalFilters';
 import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { computeScope, isThisWeek } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
@@ -252,7 +253,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
       tabName="Triage Queue"
       tabTag={TAB_TAGS.queue}
       filters={<GlobalFilterBar />}
-      tabNav={<TabNav current="/queue" tabs={applyTabCounts(TABS, counts)} />}
+      tabNav={<TabNav current="/queue" tabs={applyTabCounts(TABS, counts)} globalParams={extractGlobalParams(searchParams)} />}
     >
       {!isLive() && (
         <div
