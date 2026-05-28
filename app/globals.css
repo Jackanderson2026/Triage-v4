@@ -33,3 +33,13 @@ a {
 table {
   border-collapse: collapse;
 }
+
+/* Loading-skeleton animations — used by app/loading.tsx. */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
