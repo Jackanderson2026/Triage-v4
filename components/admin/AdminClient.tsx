@@ -10,9 +10,13 @@ import {
   createOpsExec,
   deleteOpsExec,
   removeAllocationRule,
+  setHiddenQueueTiers,
+  setOpsExecRole,
   setScopeLimit,
   type OpsExecConfig,
+  type OpsRole,
 } from '@/lib/admin/opsExecs';
+import { QUEUE_TIER_BUCKETS } from '@/lib/triage/queueTiers';
 
 export interface PartnerOption {
   id: string;
@@ -197,10 +201,73 @@ function ExecCard({
         <div>
           <span style={{ fontSize: text.lg, fontWeight: 700, color: colors.ink }}>{exec.name}</span>
           <span style={{ fontSize: text.sm, color: colors.ink50, marginLeft: space[2] }}>{exec.email}</span>
+          <span
+            style={{
+              marginLeft: space[2],
+              fontSize: text.xs,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: radii.sm,
+              background: exec.role === 'trainer' ? colors.blueSoft : colors.grapeSoft,
+              color: exec.role === 'trainer' ? colors.blue : colors.grape,
+            }}
+          >
+            {exec.role === 'trainer' ? 'Trainer' : 'Ops exec'}
+          </span>
         </div>
-        <button style={linkBtn} disabled={pending} onClick={() => run(() => deleteOpsExec(exec.id))}>
-          Remove exec
-        </button>
+        <div style={{ display: 'flex', gap: space[3], alignItems: 'center' }}>
+          <select
+            style={input}
+            value={exec.role}
+            onChange={(e) => run(() => setOpsExecRole(exec.id, e.target.value as OpsRole))}
+            disabled={pending}
+          >
+            <option value="ops_exec">Ops exec</option>
+            <option value="trainer">Trainer</option>
+          </select>
+          <button style={linkBtn} disabled={pending} onClick={() => run(() => deleteOpsExec(exec.id))}>
+            Remove exec
+          </button>
+        </div>
+      </div>
+
+      {/* Queue tier visibility */}
+      <div style={{ marginBottom: space[3] }}>
+        <div style={{ ...label, marginBottom: space[2] }}>
+          Triage Queue sub-tabs (uncheck to hide for this exec)
+        </div>
+        <div style={{ display: 'flex', gap: space[3], flexWrap: 'wrap' }}>
+          {QUEUE_TIER_BUCKETS.map((b) => {
+            const hidden = exec.hiddenQueueTiers.includes(b.key);
+            return (
+              <label
+                key={b.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: space[1],
+                  fontSize: text.sm,
+                  color: hidden ? colors.ink50 : colors.ink70,
+                  cursor: 'pointer',
+                  textDecoration: hidden ? 'line-through' : 'none',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!hidden}
+                  disabled={pending}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? exec.hiddenQueueTiers.filter((k) => k !== b.key)
+                      : [...exec.hiddenQueueTiers, b.key];
+                    run(() => setHiddenQueueTiers(exec.id, next));
+                  }}
+                />
+                {b.label}
+              </label>
+            );
+          })}
+        </div>
       </div>
 
       {/* Allocation rules */}

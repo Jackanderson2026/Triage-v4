@@ -9,6 +9,7 @@ import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import {
   getBrandOps,
+  getBrandPlatformOps,
   getCompliance,
   getMenuOffboardingSignals,
   getMenuOps,
@@ -28,6 +29,7 @@ import { buildInactiveMenuCounts, daysUntilResume } from '@/lib/triage/signals';
 import { computeScope, isThisWeek } from '@/lib/triage/scope';
 import { listOpsExecConfig } from '@/lib/admin/opsExecs';
 import { auth } from '@/auth';
+import { QUEUE_TIER_BUCKETS } from '@/lib/triage/queueTiers';
 import type { AnnotationType as TagAnnotationType } from '@/components/primitives/TagModal';
 import type { AnnotationType } from '@/lib/annotations';
 
@@ -49,20 +51,11 @@ function toTagAnn(a: AnnotationType): TagAnnotationType {
   return a;
 }
 
-// Sub-tab filter buckets — each maps to a set of issue codes that mean "this
-// partner belongs in this bucket". Order matches the queue hierarchy. The
-// 'clean' bucket is special: partners with no active issue at all.
+// Sub-tab filter buckets — shared constant in lib/triage/queueTiers.ts so the
+// admin UI can render the same set when picking which sub-tabs to hide per
+// exec. The 'clean' bucket is special: partners with no active issue.
 const CLEAN_KEY = 'clean';
-const TIER_BUCKETS: Array<{ key: string; label: string; codes: IssueCode[] }> = [
-  { key: 'platform', label: 'Platform', codes: ['data_quality_compliance_empty'] },
-  { key: 'paused', label: 'Paused', codes: ['paused_overdue', 'paused_in_window'] },
-  { key: 'inactive', label: 'Inactive', codes: ['inactive_partner'] },
-  { key: 'non-compliant', label: 'Non-Compliant', codes: ['compliance_non_compliant'] },
-  { key: 'missing-items', label: 'Missing Items', codes: ['missing_items_breach'] },
-  { key: 'rating', label: 'Rating', codes: ['rating_below_target'] },
-  { key: 'open-rate', label: 'Open Rate', codes: ['open_rate_breach'] },
-  { key: 'rider-wait', label: 'Rider Wait', codes: ['rider_wait_breach'] },
-];
+const TIER_BUCKETS = QUEUE_TIER_BUCKETS;
 
 export default async function QueuePage({ searchParams }: PageProps) {
   const partnerType = asString(searchParams.partnerType);
@@ -70,19 +63,22 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const tierFilter = asString(searchParams.tier);
 
-  const [partners, compliance, sparklines, counts, menus, brands, platforms, offboarding, execConfig, session] =
-    await Promise.all([
-      getPartnerOps(),
-      getCompliance(),
-      getSparklines(),
-      getTabCounts(),
-      getMenuOps(),
-      getBrandOps(),
-      getPlatformOps(),
-      getMenuOffboardingSignals(),
-      listOpsExecConfig(),
-      auth(),
-    ]);
+  const [
+    partners, compliance, sparklines, counts, menus, brands, platforms, brandPlatforms,
+    offboarding, execConfig, session,
+  ] = await Promise.all([
+    getPartnerOps(),
+    getCompliance(),
+    getSparklines(),
+    getTabCounts(),
+    getMenuOps(),
+    getBrandOps(),
+    getPlatformOps(),
+    getBrandPlatformOps(),
+    getMenuOffboardingSignals(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
   const sessionEmail = session?.user?.email ?? null;
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
 
@@ -170,14 +166,24 @@ export default async function QueuePage({ searchParams }: PageProps) {
     }
   }
 
-  // Apply the tier filter (if any) to the visible views.
-  const tierBucket = tierFilter && tierFilter !== CLEAN_KEY ? TIER_BUCKETS.find((b) => b.key === tierFilter) : null;
+  // Per-exec tier visibility — drop sub-tab chips AND partners whose active
+  // issue is in a hidden tier. Looked up against the SSO email; unregistered
+  // user → no tiers hidden.
+  const myExec = execConfig.find((c) => c.exec.email === (sessionEmail ?? '').toLowerCase())?.exec;
+  const hiddenTiers = new Set(myExec?.hiddenQueueTiers ?? []);
+  const isCodeInHiddenTier = (code: IssueCode): boolean =>
+    TIER_BUCKETS.some((b) => hiddenTiers.has(b.key) && b.codes.includes(code));
+  const visibleTierBuckets = TIER_BUCKETS.filter((b) => !hiddenTiers.has(b.key));
+
+  // Apply the tier filter (if any) to the visible views, plus the per-exec
+  // hidden-tier filter.
+  const tierBucket = tierFilter && tierFilter !== CLEAN_KEY ? visibleTierBuckets.find((b) => b.key === tierFilter) : null;
   const visibleViews =
     tierFilter === CLEAN_KEY
       ? views.filter((v) => v.activeIssue === null)
       : tierBucket
         ? views.filter((v) => v.activeIssue !== null && tierBucket.codes.includes(v.activeIssue))
-        : views.filter((v) => v.activeIssue !== null); // 'All' = all firing partners; clean partners only via their tab
+        : views.filter((v) => v.activeIssue !== null && !isCodeInHiddenTier(v.activeIssue));
 
   // Build the sub-tab list with hrefs that preserve global filters.
   const baseParams = new URLSearchParams();
@@ -190,9 +196,10 @@ export default async function QueuePage({ searchParams }: PageProps) {
     const qs = p.toString();
     return qs ? `/queue?${qs}` : '/queue';
   }
+  const allCount = views.filter((v) => v.activeIssue !== null && !isCodeInHiddenTier(v.activeIssue)).length;
   const subTabs: SubTab[] = [
-    { key: 'all', label: 'All', href: tierHref(null), count: views.filter((v) => v.activeIssue !== null).length, active: !tierFilter },
-    ...TIER_BUCKETS.map((b) => ({
+    { key: 'all', label: 'All', href: tierHref(null), count: allCount, active: !tierFilter },
+    ...visibleTierBuckets.map((b) => ({
       key: b.key,
       label: b.label,
       href: tierHref(b.key),
@@ -229,9 +236,10 @@ export default async function QueuePage({ searchParams }: PageProps) {
       sparkline={sparklines.get(v.partner.partnerId)}
       brands={brands.get(v.partner.partnerId) ?? []}
       platforms={platforms.get(v.partner.partnerId) ?? []}
+      brandPlatforms={brandPlatforms}
       annotation={v.annotation}
       daysUntilResume={v.daysUntilResume}
-      alsoIn={offboardingPartnerIds.has(v.partner.partnerId) ? ['Offboarding Risk'] : []}
+      alsoIn={offboardingPartnerIds.has(v.partner.partnerId) ? ['Roo Offboarding Risk'] : []}
     />
   );
 

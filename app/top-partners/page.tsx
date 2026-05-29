@@ -10,6 +10,7 @@ import { tokens } from '@/components/primitives';
 import { TAB_TAGS } from '@/lib/bq/cache';
 import {
   getBrandOps,
+  getBrandPlatformOps,
   getCompliance,
   getMenuOps,
   getPartnerOps,
@@ -69,18 +70,21 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
   const hostStatus = asString(searchParams.hostStatus);
   const brandTab = asString(searchParams.brand);
 
-  const [partners, compliance, menus, sparklines, brands, platforms, counts, execConfig, session] =
-    await Promise.all([
-      getPartnerOps(),
-      getCompliance(),
-      getMenuOps(),
-      getSparklines(),
-      getBrandOps(),
-      getPlatformOps(),
-      getTabCounts(),
-      listOpsExecConfig(),
-      auth(),
-    ]);
+  const [
+    partners, compliance, menus, sparklines, brands, platforms, brandPlatforms, counts,
+    execConfig, session,
+  ] = await Promise.all([
+    getPartnerOps(),
+    getCompliance(),
+    getMenuOps(),
+    getSparklines(),
+    getBrandOps(),
+    getPlatformOps(),
+    getBrandPlatformOps(),
+    getTabCounts(),
+    listOpsExecConfig(),
+    auth(),
+  ]);
   const complianceByPartner = buildComplianceByPartner(partners, compliance);
   const inactiveMenuCounts = buildInactiveMenuCounts(partners, menus);
   const annotations = await listActiveAnnotations(partners.map((p) => p.partnerId));
@@ -223,6 +227,7 @@ export default async function TopPartnersPage({ searchParams }: PageProps) {
               sparkline={sparklines.get(v.partner.partnerId)}
               brands={brands.get(v.partner.partnerId) ?? []}
               platforms={platforms.get(v.partner.partnerId) ?? []}
+              brandPlatforms={brandPlatforms}
               annotation={v.annotation}
               daysUntilResume={v.daysUntilResume}
               headlineGmv="avgWeekly4w"

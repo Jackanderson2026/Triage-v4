@@ -15,6 +15,7 @@ import { BRAND_OPS_FIXTURE } from './fixtures/brandOps.fixture';
 import { MENU_OFFBOARDING_SIGNALS_FIXTURE } from './fixtures/menuOffboardingSignals.fixture';
 import { PLATFORM_OPS_FIXTURE } from './fixtures/platformOps.fixture';
 import { FEED_FRESHNESS_FIXTURE } from './fixtures/feedFreshness.fixture';
+import { BRAND_PLATFORM_OPS_FIXTURE } from './fixtures/brandPlatformOps.fixture';
 import { fetchPartnerOps as fetchPartnerOpsLive, type PartnerOpsRow } from './queries/granularOps';
 import {
   fetchOffboardingSignals as fetchOffboardingSignalsLive,
@@ -36,6 +37,10 @@ import {
   fetchFeedFreshness as fetchFeedFreshnessLive,
   type FeedFreshness,
 } from './queries/feedFreshness';
+import {
+  fetchBrandPlatformOps as fetchBrandPlatformOpsLive,
+  type BrandPlatformRow,
+} from './queries/brandPlatformOps';
 
 export function isLive(): boolean {
   return Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
@@ -79,6 +84,11 @@ export async function getMenuOffboardingSignals(): Promise<MenuOffboardingSignal
 export async function getPlatformOps(): Promise<Map<string, PartnerPlatformRow[]>> {
   if (isLive()) return fetchPlatformOpsLive();
   return PLATFORM_OPS_FIXTURE;
+}
+
+export async function getBrandPlatformOps(): Promise<Map<string, BrandPlatformRow[]>> {
+  if (isLive()) return fetchBrandPlatformOpsLive();
+  return BRAND_PLATFORM_OPS_FIXTURE;
 }
 
 export async function getFeedFreshness(): Promise<FeedFreshness> {

@@ -22,6 +22,7 @@ import type { PartnerOpsRow } from '@/lib/bq/queries/granularOps';
 import type { BrandOpsRow } from '@/lib/bq/queries/brandOps';
 import type { PartnerSparkline } from '@/lib/bq/queries/sparklines';
 import type { PartnerPlatformRow } from '@/lib/bq/queries/platformOps';
+import type { BrandPlatformRow } from '@/lib/bq/queries/brandPlatformOps';
 import type { PartnerCompliance } from '@/lib/triage/compliance';
 import {
   MISSING_ITEMS_INTERNAL_TARGET,
@@ -71,6 +72,10 @@ export interface PartnerCardProps {
   brands: BrandOpsRow[];
   /** Per-platform breakdown shown on expand. Empty array = no platform split rendered. */
   platforms: PartnerPlatformRow[];
+  /** Brand-level platform splits, keyed by brandName. Rendered inside each
+   * expanded BrandRow so AMs can spot a brand that's good on one platform
+   * but failing on another. */
+  brandPlatforms: Map<string, BrandPlatformRow[]>;
   annotation: AnnotationView | null;
   daysUntilResume: number | null;
   /** Which GMV figure to surface in the inline header row.
@@ -83,7 +88,7 @@ export interface PartnerCardProps {
 
 export function PartnerCard(props: PartnerCardProps) {
   const {
-    partner, rank, activeIssue, issues, compliance, sparkline, brands, platforms, annotation,
+    partner, rank, activeIssue, issues, compliance, sparkline, brands, platforms, brandPlatforms, annotation,
     daysUntilResume, headlineGmv = 'gmv7d', alsoIn = [],
   } = props;
   const [expanded, setExpanded] = useState(false);
@@ -394,7 +399,11 @@ export function PartnerCard(props: PartnerCardProps) {
                 Brands ({brands.length})
               </div>
               {brands.map((b) => (
-                <BrandRow key={b.brandName} brand={b} />
+                <BrandRow
+                  key={b.brandName}
+                  brand={b}
+                  platforms={brandPlatforms.get(`${partner.partnerId}::${b.brandName}`) ?? []}
+                />
               ))}
             </section>
           )}
@@ -462,8 +471,8 @@ function actionButtonStyle(pending: boolean): CSSProperties {
 }
 
 // Brand sub-row — collapsed shows brand name + active issue + chip + mini sparkline.
-// Click expands to a metrics grid + larger sparklines.
-function BrandRow({ brand }: { brand: BrandOpsRow }) {
+// Click expands to a metrics grid + larger sparklines + per-platform tiles.
+function BrandRow({ brand, platforms }: { brand: BrandOpsRow; platforms: BrandPlatformRow[] }) {
   const [open, setOpen] = useState(false);
   const ratingBad = brand.rating28d !== null && brand.rating28d < RATING_TARGET;
   const missBad = brand.missingItemsPct7d !== null && brand.missingItemsPct7d > MISSING_ITEMS_INTERNAL_TARGET;
@@ -528,8 +537,59 @@ function BrandRow({ brand }: { brand: BrandOpsRow }) {
               value={brand.gmv7d > 0 ? `${((brand.discountValue7d / brand.gmv7d) * 100).toFixed(1)}%` : '—'}
             />
           </div>
+
+          {/* Per-platform breakdown for THIS brand. Catches "SoBe is fine on
+              Deliveroo but failing on Uber" patterns invisible at brand-level. */}
+          {platforms.length > 0 && (
+            <div style={{ marginTop: space[3] }}>
+              <div style={{ fontSize: 10, color: colors.ink50, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: space[2], fontWeight: 600 }}>
+                By platform
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(200px, 1fr))`, gap: space[1] }}>
+                {platforms.map((pl) => (
+                  <BrandPlatformTile key={pl.platform} row={pl} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Compact per-brand × per-platform tile rendered inside an expanded BrandRow.
+// Same look as the partner-level PlatformTile but smaller (lives one level deeper).
+function BrandPlatformTile({ row }: { row: BrandPlatformRow }) {
+  const ratingBad = row.rating28d !== null && row.rating28d < RATING_TARGET;
+  const openRateBad = row.openRate7d !== null && row.openRate7d < OPEN_RATE_BENCHMARK;
+  const missBad = row.missingItemsPct7d !== null && row.missingItemsPct7d > MISSING_ITEMS_INTERNAL_TARGET;
+  const riderBad = row.riderWait5minPct7d !== null && row.riderWait5minPct7d > RIDER_WAIT_BENCHMARK;
+  return (
+    <div
+      style={{
+        background: colors.white,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.sm,
+        padding: `${space[2]} ${space[3]}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space[1] }}>
+        <strong style={{ fontSize: text.xs, color: colors.ink, letterSpacing: '0.04em' }}>{row.platform}</strong>
+        <span style={{ fontSize: 10, color: colors.ink50 }}>{row.orders7d.toLocaleString('en-GB')} orders 7d</span>
+      </div>
+      <div style={{ display: 'flex', gap: space[1], flexWrap: 'wrap' }}>
+        <MiniCell label="7d GMV" value={fmtGbp(row.gmv7d)} />
+        <MiniCell label="Rating" value={fmtRating(row.rating28d)} bad={ratingBad} />
+        <MiniCell label="Open" value={fmtPct(row.openRate7d)} bad={openRateBad} />
+        <MiniCell label="Miss" value={fmtPct(row.missingItemsPct7d)} bad={missBad} />
+        {row.riderWait5minPct7d !== null && (
+          <MiniCell label="Rider" value={fmtPct(row.riderWait5minPct7d)} bad={riderBad} />
+        )}
+        {row.rejectedCount7d > 0 && (
+          <MiniCell label="Rejected" value={row.rejectedCount7d.toString()} bad />
+        )}
+      </div>
     </div>
   );
 }

@@ -10,10 +10,15 @@
 import { revalidatePath } from 'next/cache';
 import { sql } from '@/lib/db/client';
 
+export type OpsRole = 'ops_exec' | 'trainer';
+
 export interface OpsExec {
   id: number;
   name: string;
   email: string;
+  role: OpsRole;
+  /** Queue sub-tab keys this exec should NOT see (e.g. ['platform','paused']). */
+  hiddenQueueTiers: string[];
 }
 
 export interface AllocationRule {
@@ -37,18 +42,24 @@ export interface OpsExecConfig {
   limits: ScopeLimit[];
 }
 
-interface ExecRow { id: number; name: string; email: string }
+interface ExecRow { id: number; name: string; email: string; role: string; hidden_queue_tiers: string[] | null }
 interface RuleRow { id: number; ops_exec_id: number; partner_type: string | null; brand_stack: string | null; partner_id: string | null }
 interface LimitRow { ops_exec_id: number; tab: string; max_partners: number }
 
 export async function listOpsExecConfig(): Promise<OpsExecConfig[]> {
   const [execs, rules, limits] = await Promise.all([
-    sql`SELECT id, name, email FROM ops_execs ORDER BY name` as unknown as Promise<ExecRow[]>,
+    sql`SELECT id, name, email, role, hidden_queue_tiers FROM ops_execs ORDER BY name` as unknown as Promise<ExecRow[]>,
     sql`SELECT id, ops_exec_id, partner_type, brand_stack, partner_id FROM allocation_rules ORDER BY id` as unknown as Promise<RuleRow[]>,
     sql`SELECT ops_exec_id, tab, max_partners FROM scope_limits` as unknown as Promise<LimitRow[]>,
   ]);
   return execs.map((e) => ({
-    exec: { id: e.id, name: e.name, email: e.email.toLowerCase() },
+    exec: {
+      id: e.id,
+      name: e.name,
+      email: e.email.toLowerCase(),
+      role: (e.role === 'trainer' ? 'trainer' : 'ops_exec') as OpsRole,
+      hiddenQueueTiers: e.hidden_queue_tiers ?? [],
+    },
     rules: rules
       .filter((r) => r.ops_exec_id === e.id)
       .map((r) => ({
@@ -106,6 +117,19 @@ export async function addPartnerAssignment(opsExecId: number, partnerId: string)
 
 export async function removeAllocationRule(id: number): Promise<void> {
   await sql`DELETE FROM allocation_rules WHERE id = ${id}`;
+  revalidatePath('/admin');
+}
+
+export async function setOpsExecRole(opsExecId: number, role: OpsRole): Promise<void> {
+  const r = role === 'trainer' ? 'trainer' : 'ops_exec';
+  await sql`UPDATE ops_execs SET role = ${r} WHERE id = ${opsExecId}`;
+  revalidatePath('/admin');
+}
+
+export async function setHiddenQueueTiers(opsExecId: number, hidden: string[]): Promise<void> {
+  // Dedupe + clamp to known tier keys at the call site (Admin UI).
+  const arr = Array.from(new Set(hidden));
+  await sql`UPDATE ops_execs SET hidden_queue_tiers = ${arr}::text[] WHERE id = ${opsExecId}`;
   revalidatePath('/admin');
 }
 

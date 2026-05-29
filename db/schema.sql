@@ -44,8 +44,13 @@ CREATE TABLE IF NOT EXISTS ops_execs (
   id         BIGSERIAL PRIMARY KEY,
   name       TEXT        NOT NULL,
   email      TEXT        NOT NULL UNIQUE,
+  role       TEXT        NOT NULL DEFAULT 'ops_exec',
+  hidden_queue_tiers TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Idempotent migrations for existing DBs.
+ALTER TABLE ops_execs ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'ops_exec';
+ALTER TABLE ops_execs ADD COLUMN IF NOT EXISTS hidden_queue_tiers TEXT[] NOT NULL DEFAULT '{}';
 
 -- Allocation rules: a partner is assigned to an exec if it matches every
 -- non-null field on any of that exec's rules (AND within a rule; OR across
